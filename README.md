@@ -21,8 +21,9 @@ There are many things that can be improved on, notably, there is no random cropp
 There should also be a bit of cleanup, as conversion, training, data loading, and loss functions are all defined in the same file, which is a huge mess.
 
 ### License and Citation
+If you find this useful, please check out the original, and if you use it within research, remember to include the original paper. 
 
-The use of this code is RESTRICTED to **non-commercial research and educational purposes**.
+The use of the code is RESTRICTED to **non-commercial research and educational purposes**. 
 
 ```
 @INPROCEEDINGS{RRIN, 
