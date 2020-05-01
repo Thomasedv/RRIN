@@ -2,17 +2,18 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+
 # Adapted from "Tunable U-Net implementation in PyTorch"
 # https://github.com/jvanvugt/pytorch-unet
 
 class UNet(nn.Module):
     def __init__(
-        self,
-        in_channels=1,
-        n_classes=2,
-        depth=5,
-        wf=5,
-        padding=True,
+            self,
+            in_channels=1,
+            n_classes=2,
+            depth=5,
+            wf=5,
+            padding=True,
     ):
         super(UNet, self).__init__()
 
@@ -34,7 +35,7 @@ class UNet(nn.Module):
             )
             prev_channels = 2 ** (wf + i)
 
-        self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=3,padding=1)
+        self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
 
     def forward(self, x):
         blocks = []
@@ -43,11 +44,12 @@ class UNet(nn.Module):
             if i != len(self.down_path) - 1:
                 blocks.append(x)
                 x = F.avg_pool2d(x, 2)
-        x = F.leaky_relu(self.midconv(x), negative_slope = 0.1)
+        x = F.leaky_relu(self.midconv(x), negative_slope=0.1)
         for i, up in enumerate(self.up_path):
             x = up(x, blocks[-i - 1])
 
         return self.last(x)
+
 
 class UNetConvBlock(nn.Module):
     def __init__(self, in_size, out_size, padding):
@@ -59,6 +61,7 @@ class UNetConvBlock(nn.Module):
 
         block.append(nn.Conv2d(out_size, out_size, kernel_size=3, padding=int(padding)))
         block.append(nn.LeakyReLU(0.1))
+
         self.block = nn.Sequential(*block)
 
     def forward(self, x):
@@ -71,9 +74,9 @@ class UNetUpBlock(nn.Module):
         super(UNetUpBlock, self).__init__()
 
         self.up = nn.Sequential(
-                nn.Upsample(mode='bilinear', scale_factor=2),
-                nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
-            )
+            nn.Upsample(mode='bilinear', scale_factor=2),
+            nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
+        )
         self.conv_block = UNetConvBlock(in_size, out_size, padding)
 
     def center_crop(self, layer, target_size):
@@ -81,8 +84,9 @@ class UNetUpBlock(nn.Module):
         diff_y = (layer_height - target_size[0]) // 2
         diff_x = (layer_width - target_size[1]) // 2
         return layer[
-            :, :, diff_y : (diff_y + target_size[0]), diff_x : (diff_x + target_size[1])
-        ]
+               :, :, diff_y: (diff_y + target_size[0]), diff_x: (diff_x + target_size[1])
+               ]
+
     def forward(self, x, bridge):
         up = self.up(x)
         crop1 = self.center_crop(bridge, up.shape[2:])
