@@ -1,6 +1,7 @@
 import argparse
 import sys
 import typing
+from collections import Counter
 from random import randint
 
 import math
@@ -22,8 +23,8 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
 
 
-def load_image_tensor(img_path, cuda=False, resize=False, train=False):
-    img = Image.open(img_path)
+def load_image_tensor(img_path, cuda=False, resize=False):
+    img = Image.open(img_path)  # type: Image.Image
 
     if resize:
         size = (img.size[0] / 2, img.size[1] / 2)
@@ -75,8 +76,7 @@ class Dataloader(Dataset):
                 #     idx = randint(0, 1)
                 #     img.transpose([Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][idx])
                 img, _ = load_image_tensor(os.path.join(self.path, subfolder, img_path), self.cuda,
-                                           resize=self.train,
-                                           train=self.train)
+                                           resize=self.train)
                 sequence.append(img)
             return index, sequence
 
@@ -106,7 +106,14 @@ class Dataloader(Dataset):
 
 
 def convert(args):
-    code = os.system(f"ffmpeg -i {args.input_video} -vsync 0 {args.convert_folde}\\%9d.png")
+    if os.path.isdir('temp'):
+        shutil.rmtree('temp', ignore_errors=True)
+
+    os.makedirs('temp')
+    os.makedirs('temp\\input')
+    os.makedirs('temp\\output')
+
+    code = os.system(f"ffmpeg -i {args.input_video} -vsync 0 temp\\input\\%9d.png")
     if code:
         print('Failed to convert video to images.')
         sys.exit(1)
@@ -115,7 +122,7 @@ def convert(args):
     if use_cuda:
         print('Cuda enabled!')
 
-    dataset = Dataloader(path=args.convert_folder, cuda=use_cuda, train=args.train)
+    dataset = Dataloader(path='temp\\input', cuda=use_cuda, train=False)
     testloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, pin_memory=False,
                                              collate_fn=lambda x: x)
     model = Net()
@@ -131,37 +138,47 @@ def convert(args):
 
     model = model.cuda()
     model.eval()
+    intermediates = args.sf  # sf in superslomo
 
-    dest = args.convert_folder_out
+    dest = 'temp\\output'
     with torch.no_grad():
         img_count = 1
         for data in tqdm.tqdm(testloader):
             img1, img2, img1_data, img2_data = data[0]
-
-            output = model(img1.unsqueeze(0), img2.unsqueeze(0))
-            output = output.squeeze(0).cpu()
-            output = transforms.functional.to_pil_image(output)
-
-            w_int, h_int = output.size
-            # print(w_int, h_int)
-            # output.save(f'output/intermediate uncropped{img_count + 1:09d}.jpg')
-            # print((0, abs(h_int - orig_height), orig_width, h_int))
-
-            # Restore original dimensions
-
-            output = output.crop((0, abs(h_int - img1_data['height']), img1_data['width'], h_int))
+            del data
+            img1 = img1.unsqueeze(0)
+            img2 = img2.unsqueeze(0)
 
             if img_count == 1:
                 shutil.copy(img1_data["path"], os.path.join(dest, f'{img_count:09d}{img1_data["filetype"]}'))
 
-            output.save(f'output/{img_count + 1:09d}{img1_data["filetype"]}')
-            shutil.copy(img2_data["path"], os.path.join(dest, f'{img_count + 2:09d}{img1_data["filetype"]}'))
+            for i in range(1, intermediates + 1):
+                # time in between frames, eg. for only a single interpolated frame, t=0.5
+                time_step = i / (intermediates + 1)  # TODO: Check if correct
 
-            img_count += 2
+                output = model(img1, img2, t=time_step)
+
+                output = output.squeeze(0).cpu()
+                output = transforms.functional.to_pil_image(output)
+
+                # Restore original dimensions
+                w_int, h_int = output.size
+
+                output = output.crop((0, abs(h_int - img1_data['height']), img1_data['width'], h_int))
+                output.save(os.path.join(dest, f'{img_count + i:09d}{img1_data["filetype"]}'))
+                output = None
+
+            shutil.copy(img2_data["path"],
+                        os.path.join(dest, f'{img_count + intermediates + 1:09d}{img1_data["filetype"]}'))
+
+            img_count += intermediates + 1
             # print(f'\rProcessed {img_count} images', flush=True, end='')
 
-    code = os.system(f"ffmpeg -i {args.convert_folder_out}\\%9d.png -r 30 -b:v 10M -crf 15 {args.output_video}")
-    if code:
+    code = os.system(f"ffmpeg -r {args.fps} -i temp\\output\\%9d.png -b:v 10M -crf 30 {args.output_video}")
+
+    if not code:
+        shutil.rmtree('temp', ignore_errors=True)
+    else:
         print('Failed to convert interpolated images to video.')
         sys.exit(1)
 
@@ -204,15 +221,17 @@ def charbonnierLoss(output, target):
     N = target.shape[0]
     return torch.sum(torch.sqrt((output - target).pow(2) + epsilon)) / N
 
+
 os.getcwd()
+
 
 def train(args):
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     if use_cuda:
         print('Cuda enabled!')
 
-    train_dataset = Dataloader(path=args.train_folder, cuda=use_cuda, train=args.train)
-    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, shuffle=True, pin_memory=False)
+    train_dataset = Dataloader(path=args.train_folder, cuda=use_cuda, train=True)
+    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=False)
 
     model = Net()
 
@@ -239,13 +258,14 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [10, 25, 35], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [75, 100, 130], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
 
-    if 'sched' in state:
-        sched.load_state_dict(state.get('sched'))
+    # if 'sched' in state:
+    #     sched.load_state_dict(state.get('sched'))
+    #     sched.milestones = Counter([10, 25, 35])
 
     vgg16 = torchvision.models.vgg16(pretrained=True)
     vgg16_conv_4_3 = nn.Sequential(*list(vgg16.children())[0][:22])
@@ -255,16 +275,24 @@ def train(args):
         param.requires_grad = False
     #
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    L1_lossFn = nn.L1Loss().to(device)
+    # L1_lossFn = nn.L1Loss().to(device)
     MSE_LossFn = nn.MSELoss().to(device)
     ComboLossFn = CombinedLoss().to(device)
 
-    epochs = 2000
+    epochs = 100
+
+    # Use below to increase learning rate if the stepsize was reduced too early
+    # for param_group in optim.param_groups:
+    #     param_group['lr'] = 1e-4
 
     for epoch in range(start_epoch, epochs):
         print(f'--------- New Epoch {epoch} Current lr: {optim.param_groups[0]["lr"]} ---------')
         step = 0
 
+        # TODO: Modify train code to be able to train on more than a single intermediate frame
+        # Model supports finding more than a single time step between two input frames.
+        # Per Super-SloMo paper, training on up to 7 intermediate frames, may increase model accuracy
+        # at least in their case.
         for indexes, (I0, It, I1) in trainloader:
             loss = 0
             itrs = 0
@@ -289,9 +317,12 @@ def train(args):
                         os.makedirs(f'debug/{idx}')
                     print(f'Losses idx {idx}: charb {charLoss.item() / 1e3:6.4f}, combo {comboLoss / 10:6.4f}')
 
-                    transforms.functional.to_pil_image(f0.squeeze(0).cpu()).save(f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                    transforms.functional.to_pil_image(f1.squeeze(0).cpu()).save(f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                    transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).save(f'debug/{idx}/Epoch{epoch:04d}_2int.png')
+                    transforms.functional.to_pil_image(f0.squeeze(0).cpu()).save(
+                        f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
+                    transforms.functional.to_pil_image(f1.squeeze(0).cpu()).save(
+                        f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
+                    transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).save(
+                        f'debug/{idx}/Epoch{epoch:04d}_2int.png')
 
             step += 1
             optim.zero_grad()
@@ -306,51 +337,51 @@ def train(args):
 
         sched.step()
 
-        if epoch % 1 == 0:
-            state = {'model': model.state_dict(),
-                     'optim': optim.state_dict(),
-                     'sched': sched.state_dict(),
-                     'epoch': epoch}
-
-            torch.save(state, 'models' + f"/{args.model_name}" + str(epoch) + ".pth")
+        # Save progress
+        state = {'model': model.state_dict(),
+                 'optim': optim.state_dict(),
+                 'epoch': epoch + 1}
+        torch.save(state, 'models' + f"/{args.model_name}" + str(epoch) + ".pth")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Video Frame Interpolation via Residue Refinement')
-    parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
-
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--convert', action='store_true', default=False, help='Performs interpolation of images')
-    group.add_argument('--train', action='store_true', default=False, help='Performs training of model')
-
-    parser.add_argument('--train_folder', type=str, required=False, help='Path to train sequences')
-
-    parser.add_argument('--input_video', type=str,
-                        required=False, help='Path to video to be interpolated.')
-
-    parser.add_argument('--output_video', type=str,
-                        required=False, help='Path to new videofile.')
-
-    parser.add_argument('--convert_folder', type=str, default='temp/input',
-                        required=False, help='Path to folder to place images to be interpolated.')
-    parser.add_argument('--convert_folder_out', type=str, default='temp/output',
-                        required=False, help='Path to folder for converted images')
-
     parser.add_argument('--model_name', type=str, default='Model',
-                        required=False, help='Name of model')
-    parser.add_argument('--resume', action='store_true', default=False, help='Resume model progress')
+                        required=True, help='Name of model')
+    parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA')
+
+    sub = parser.add_subparsers(help='Performs training of model', dest='mode')
+    sub.required = True
+
+    train_args = sub.add_parser('train', help='Train the model', )
+    train_args.add_argument('--train_folder', type=str, required=True,
+                            help='Path to train sequences (training)')
+    train_args.add_argument('--resume', action='store_true', default=False,
+                            help='Resume model progress (training)')
+    train_args.add_argument('--batch_size', type=int, default=2, required=False,
+                            help='How many frames per batch (training)')
+
+    sub_convert = sub.add_parser('convert', help='Performs interpolation of a video.')
+    sub_convert.add_argument('--input_video', type=str,
+                             required=True, help='Path to video to be interpolated.')
+    sub_convert.add_argument('--output_video', type=str,
+                             required=True, help='Path to new videofile.')
+    sub_convert.add_argument('--sf', type=int,
+                             required=True, help='How many intermediate frames to make.')
+    sub_convert.add_argument('--fps', type=str,
+                             required=True, help='FPS of output')
+
+    # TODO: Add parameter to redo only part of conversion, eg, do not reinterpolate frames. Only convert frames to video
 
     # parser.add_argument('--samples', action='store_true', default=False, help='Enables samples during testing')
     # parser.add_argument('--test_folder', type=str, required=False, help='path to folder for saving checkpoints')
 
     args = parser.parse_args()
 
-    if args.train and (args.train_folder is None):
-        parser.error("Train folder needs to be specified")
-
-    if args.train:
+    if args.mode == 'train':
         train(args)
-    else:
-        if None in [args.output_video, args.input_video]:
-            parser.error("Both a input video, and output video needs to be specified!")
-        convert(args)
+    elif args.mode == 'convert':
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            convert(args)
