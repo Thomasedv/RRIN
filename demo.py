@@ -279,7 +279,7 @@ def train(args):
     MSE_LossFn = nn.MSELoss().to(device)
     ComboLossFn = CombinedLoss().to(device)
 
-    epochs = 100
+    epochs = 150
 
     # Use below to increase learning rate if the stepsize was reduced too early
     # for param_group in optim.param_groups:
@@ -365,7 +365,7 @@ if __name__ == '__main__':
     sub_convert.add_argument('--input_video', type=str,
                              required=True, help='Path to video to be interpolated.')
     sub_convert.add_argument('--output_video', type=str,
-                             required=True, help='Path to new videofile.')
+                             required=False, help='Path to new videofile.')
     sub_convert.add_argument('--sf', type=int,
                              required=True, help='How many intermediate frames to make.')
     sub_convert.add_argument('--fps', type=str,
@@ -380,7 +380,11 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         train(args)
+
     elif args.mode == 'convert':
+        # if args.output_video is None:
+        #     args.output_video = os.path.splitext(args.input_video)
+
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=UserWarning)
