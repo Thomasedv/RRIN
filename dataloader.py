@@ -117,7 +117,9 @@ class Dataloader(Dataset):
     def __getitem__(self, index):
         if self.train:
             # Does dataset with resized images, and then again with a random crop
-            subfolder = self.folder[index - (len(self.folder) - 2) if self.is_randomcrop(index) else index]
+            folder_index = index - len(self.folder) * self.is_randomcrop(index)
+
+            subfolder = self.folder[folder_index]
 
             sequence = []
 
@@ -149,7 +151,7 @@ class Dataloader(Dataset):
             else:
                 last_index, p1, p1_data = self.last_img
                 if last_index != index - 1:
-                    print('Error images acquired out of order')
+                    raise Exception('Error images acquired out of order')
                     # img1_path = self.folder[index]
                     # p1, p1_data = load_image_tensor(os.path.join(self.path, img1_path), self.cuda)
 

@@ -9,8 +9,12 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+from dataloader import Dataloader
 from losses import CombinedLoss, charbonnierLoss
 from model import Net
+
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.fastest = True
 
 
 def train(args):
@@ -46,7 +50,7 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [75, 140, 160], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [75, 125, 140], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
@@ -143,10 +147,10 @@ def train(args):
             if step % 50 == 0:
                 MSE_val = MSE_LossFn(f_int, f_gt)
                 psnr = (10 * math.log10(1 / MSE_val.item()))
-                print(f'step: {step}, psnr {psnr:2.4f}, (last img: '
-                      f'loss {comboLoss / 10 + charLoss / 1e3:4.4f} '
-                      f'charb {charLoss.item() / 1e3:6.4f}, '
-                      f'combo {comboLoss / 10:6.4f}) {"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
+                print(f'step: {step:5d}, psnr {psnr:7.4f}, (last img: '
+                      f'loss {comboLoss / 10 + charLoss / 1e3:8.4f} '
+                      f'charb {charLoss.item() / 1e3:8.4f}, '
+                      f'combo {comboLoss / 10:8.4f}) {"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
 
         sched.step()
 

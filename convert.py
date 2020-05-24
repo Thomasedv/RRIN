@@ -9,6 +9,9 @@ from torchvision import transforms
 
 from model import Net
 
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.fastest = True
+
 
 def convert(args):
     if os.path.isdir('temp'):
