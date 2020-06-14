@@ -1,4 +1,5 @@
 import argparse
+import threading
 
 import torch
 
@@ -10,18 +11,23 @@ torch.backends.cudnn.fastest = True
 
 
 def main(args):
-    if args.mode == 'train':
-        train(args)
+    try:
+        if args.mode == 'train':
+            train(args)
+        elif args.mode == 'convert':
+            # if args.output_video is None:
+            #     args.output_video = os.path.splitext(args.input_video)
 
-    elif args.mode == 'convert':
-        # if args.output_video is None:
-        #     args.output_video = os.path.splitext(args.input_video)
+            import warnings
 
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
-            convert(args)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=UserWarning)
+                convert(args)
+    except:
+        if args.mode == 'convert':
+            from utils import Writer
+            Writer.exit_flag = True
+        raise
 
 
 if __name__ == '__main__':
@@ -52,6 +58,8 @@ if __name__ == '__main__':
                              required=True, help='FPS of output')
     sub_convert.add_argument('--image_folder', type=str,
                              required=False, help='Instead of taking frames from video, convert frames from a folder')
+    sub_convert.add_argument('--resume', action='store_true', default=False,
+                            help='Resume converting')
 
     # TODO: Add parameter to redo only part of conversion, eg, do not reinterpolate frames. Only convert frames to video
 

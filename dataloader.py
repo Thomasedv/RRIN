@@ -29,6 +29,7 @@ class Dataloader(Dataset):
         self.cropY0 = self.real_dims[1] - self.resize_dims[1]
 
         self.flip_map = {}
+        self.img_data = {}
 
     def random_crop(self, crop_area=None):
         """ Crops image if given, else resizes to self.resize_dims, and pads image"""
@@ -109,7 +110,7 @@ class Dataloader(Dataset):
 
         # Image data used to restore dimensions of original images when converting
         # Remove alpha channel
-        return transform(img)[:3, :, :].cuda() if cuda else transform(img)[:3, :, :], img_data
+        return transform(img)[:3, :, :].cuda().unsqueeze(0) if cuda else transform(img)[:3, :, :].unsqueeze(0), img_data
         # return transform(img)[:3, :, :], img_data
 
     def is_randomcrop(self, index):
@@ -146,7 +147,6 @@ class Dataloader(Dataset):
 
         else:
             if self.last_img is None:
-                assert index == 0
                 img1_path = self.folder[index]
                 p1, p1_data = self.load_image_tensor(os.path.join(self.path, img1_path), self.cuda)
             else:
