@@ -50,7 +50,7 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [75, 125, 140], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [75, 125, 135], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
@@ -74,11 +74,11 @@ def train(args):
     epochs = 150
 
     # Use below to increase learning rate if the stepsize was reduced too early
-    for param_group in optim.param_groups:
-        param_group['lr'] = 1e-5
+    # for param_group in optim.param_groups:
+    #     param_group['lr'] = 1e-5
 
     for epoch in range(start_epoch, epochs):
-        print(f'--------- New Epoch {epoch} Current lr: {optim.param_groups[0]["lr"]} ---------')
+        print(f'--------- New Epoch {epoch} Current lr: {optim.param_groups[0]["lr"]:.2e} ---------')
         step = 0
 
         # TODO: Modify train code to be able to train on more than a single intermediate frame

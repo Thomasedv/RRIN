@@ -110,6 +110,7 @@ class Dataloader(Dataset):
         # Image data used to restore dimensions of original images when converting
         # Remove alpha channel
         return transform(img)[:3, :, :].cuda() if cuda else transform(img)[:3, :, :], img_data
+        # return transform(img)[:3, :, :], img_data
 
     def is_randomcrop(self, index):
         return index >= len(self.folder)
