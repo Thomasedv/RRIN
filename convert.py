@@ -93,14 +93,11 @@ def convert(args):
 
     writer = Writer()
     writer.start()
-    print('folder len', len(os.listdir(f'{temp_folder}\\output')))
-    print('idx', resume_index)
+
     with torch.no_grad():
         img_count = resume_index + resume_index * args.sf - args.sf
-        print('img count', img_count)
-        print('_________')
-
-        for data in tqdm.tqdm(testloader):
+        # TQDM starting index possibly off by one.
+        for data in tqdm.tqdm(testloader, initial=img_count-1):
             img1, img2, img1_data, img2_data = data[0]
             del data
 

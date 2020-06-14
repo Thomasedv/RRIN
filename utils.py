@@ -45,7 +45,6 @@ class Writer(Thread):
         self.queue.append((method, item))
 
     def copy(self, src, dst):
-        print('Copying file', dst)
         shutil.copy(src, dst)
 
     def write(self, item):
