@@ -91,11 +91,11 @@ def train(args):
             for idx, f0, f_gt, f1 in zip(indexes, I0, It, I1):
                 itrs += 1
 
-                f0 = f0.unsqueeze(0)
-                f1 = f1.unsqueeze(0)
-                f_gt = f_gt.unsqueeze(0)
+                f0 = f0
+                f1 = f1
+                f_gt = f_gt
 
-                f_int = model(f0, f1)
+                f_int = model(f0.cuda(), f1.cuda())
                 #
                 # recnLoss = L1_lossFn(f_int, f_gt)
                 # prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt))
@@ -120,22 +120,22 @@ def train(args):
                         if flipped:
 
                             if train_dataset.is_randomcrop(idx.item()):
-                                transforms.functional.to_pil_image(f0.squeeze(0).cpu()).transpose(
+                                transforms.functional.to_pil_image(f0.squeeze(0)).transpose(
                                     [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                                transforms.functional.to_pil_image(f1.squeeze(0).cpu()).transpose(
+                                transforms.functional.to_pil_image(f1.squeeze(0)).transpose(
                                     [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                            transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).transpose(
+                            transforms.functional.to_pil_image(f_int.squeeze(0)).transpose(
                                 [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
                         else:
                             if train_dataset.is_randomcrop(idx.item()):
-                                transforms.functional.to_pil_image(f0.squeeze(0).cpu()).save(
+                                transforms.functional.to_pil_image(f0.squeeze(0)).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                                transforms.functional.to_pil_image(f1.squeeze(0).cpu()).save(
+                                transforms.functional.to_pil_image(f1.squeeze(0)).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                            transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).save(
+                            transforms.functional.to_pil_image(f_int.squeeze(0)).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
 
             step += 1

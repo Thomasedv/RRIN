@@ -38,9 +38,10 @@ class Writer(Thread):
         # Keep low to not burden main thread
         self.pool = ThreadPoolExecutor(max_workers=workers)
 
-    def add_job(self, method, item, max_queue=500):
+    def add_job(self, method, item, max_queue=1000):
         # Hold thread when file IO is too far behind.
         while len(self.queue) > max_queue:
+            print(' Large queue!')
             sleep(5)
         self.queue.append((method, item))
 
@@ -49,7 +50,7 @@ class Writer(Thread):
 
     def write(self, item):
         image, img_data, dest = item
-        image = transforms.functional.to_pil_image(image)
+        image = transforms.functional.to_pil_image(image.cpu().squeeze(0))
 
         # Restore original dimensions
         w_int, h_int = image.size

@@ -1,6 +1,9 @@
 import os
+import threading
 import typing
+from multiprocessing import Queue
 from random import randint
+from time import sleep
 
 import torch
 from PIL import Image
@@ -29,7 +32,6 @@ class Dataloader(Dataset):
         self.cropY0 = self.real_dims[1] - self.resize_dims[1]
 
         self.flip_map = {}
-        self.img_data = {}
 
     def random_crop(self, crop_area=None):
         """ Crops image if given, else resizes to self.resize_dims, and pads image"""
@@ -85,7 +87,6 @@ class Dataloader(Dataset):
             transform_list = pre_transform + [self.random_flip(flip),
                                               transforms.ToTensor()]
 
-
         else:
             width, height = img.size
 
@@ -110,8 +111,11 @@ class Dataloader(Dataset):
 
         # Image data used to restore dimensions of original images when converting
         # Remove alpha channel
-        return transform(img)[:3, :, :].cuda().unsqueeze(0) if cuda else transform(img)[:3, :, :].unsqueeze(0), img_data
-        # return transform(img)[:3, :, :], img_data
+        # return transform(img)[:3, :, :].cuda().unsqueeze(0) if cuda else transform(img)[:3, :, :].unsqueeze(0), img_data
+        if cuda:
+            return transform(img)[:3, :, :].unsqueeze(0).pin_memory(), img_data
+        else:
+            return transform(img)[:3, :, :].unsqueeze(0), img_data
 
     def is_randomcrop(self, index):
         return index >= len(self.folder)
@@ -151,7 +155,7 @@ class Dataloader(Dataset):
                 p1, p1_data = self.load_image_tensor(os.path.join(self.path, img1_path), self.cuda)
             else:
                 last_index, p1, p1_data = self.last_img
-                if last_index != index - 1:
+                if last_index != index:
                     raise Exception('Error images acquired out of order')
                     # img1_path = self.folder[index]
                     # p1, p1_data = load_image_tensor(os.path.join(self.path, img1_path), self.cuda)
@@ -159,7 +163,7 @@ class Dataloader(Dataset):
             img_path2 = self.folder[index + 1]
             p2, p2_data = self.load_image_tensor(os.path.join(self.path, img_path2), self.cuda)
 
-            self.last_img = index, p2, p2_data
+            self.last_img = index+1, p2, p2_data
             # print('p1 data', p1_data)
             # print('p2 data', p2_data)
             return p1, p2, p1_data, p2_data

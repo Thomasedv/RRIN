@@ -36,6 +36,8 @@ if __name__ == '__main__':
                         required=True, help='Name of model')
     parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA')
 
+    parser.add_argument('--rm', action='store_true', default=False, help='Removed temp folder on proper finish.')
+
     sub = parser.add_subparsers(help='Performs training of model', dest='mode')
     sub.required = True
 
