@@ -27,6 +27,7 @@ def main(args):
         if args.mode == 'convert':
             from utils import Writer
             Writer.exit_flag = True
+
         raise
 
 

@@ -38,10 +38,10 @@ def convert(args):
     # TODO: Add temp folder out folder
     temp_out = temp_folder
     t = time.time()
-    _extract_and_interpolate(args, 'G:\\Interpolate\\temp', temp_out)
+    _extract_and_interpolate(args, temp_folder, temp_out)
     print('end=', time.time() - t)
     # Separate into functions, to clear memory once it's not needed.
-    _create_video(args, temp_out)
+    # _create_video(args, temp_out)
 
 
 def _extract_and_interpolate(args, temp_folder, temp_out=None):
@@ -80,7 +80,8 @@ def _extract_and_interpolate(args, temp_folder, temp_out=None):
     # Setup conditions depending on video or image input
     if args.input_video is not None:
         if not args.resume:
-            code = os.system(f'ffmpeg -i "{args.input_video}" -an -c:v libwebp -vsync 0 -lossless 1 -compression_level 4 -qscale 75 {inp}\\%9d.webp')
+            # code = os.system(f'ffmpeg -i "{args.input_video}" -an -c:v libwebp -vsync 0 -lossless 1 -compression_level 4 -qscale 75 {inp}\\%9d.webp')
+            code = os.system(f'ffmpeg -hide_banner -i "{args.input_video}" -an -lossless 1 {inp}\\%9d.png')
 
             if code:
                 print('Failed to convert video to images.')
@@ -116,7 +117,7 @@ def _extract_and_interpolate(args, temp_folder, temp_out=None):
     model.eval()
     intermediates = args.sf  # sf in superslomo
 
-    writer = Writer()
+    writer = Writer(args.output_video)
     writer.start()
 
     with torch.no_grad():
@@ -134,14 +135,14 @@ def _extract_and_interpolate(args, temp_folder, temp_out=None):
                 time_step = i / (intermediates + 1)  # TODO: Check if correct
                 output = model(img1.cuda(), img2.cuda(), t=time_step)
                 # print(output.device)
-                writer.add_job('write', (
+                writer.add_job('tensor', (
                     output.cpu(),
                     img1_data,
                     os.path.join(dest, f'{img_count + i:09d}{img1_data["filetype"]}')))
                 output = None
             # print(img1.device)
             # print(img2.device)
-            writer.add_job('copy', (
+            writer.add_job('file', (
                 img2_data["path"],
                 os.path.join(dest, f'{img_count + intermediates + 1:09d}{img2_data["filetype"]}')
             ))
