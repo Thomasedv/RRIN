@@ -35,16 +35,21 @@ def convert(args):
     else:
         raise Exception('Missing arguments! Video or folder needs to be specified')
 
+    # TODO: Add temp folder out folder
+    temp_out = temp_folder
     t = time.time()
-    _extract_and_interpolate(args, temp_folder)
+    _extract_and_interpolate(args, 'G:\\Interpolate\\temp', temp_out)
     print('end=', time.time() - t)
     # Separate into functions, to clear memory once it's not needed.
-    _create_video(args, temp_folder)
+    _create_video(args, temp_out)
 
 
-def _extract_and_interpolate(args, temp_folder):
+def _extract_and_interpolate(args, temp_folder, temp_out=None):
+    if temp_out is None:
+        temp_out = temp_folder
+
     inp = f'{temp_folder}\\input'
-    dest = f'{temp_folder}\\output'
+    dest = f'{temp_out}\\output'
     resume_index = 1
 
     if args.resume:
@@ -63,8 +68,8 @@ def _extract_and_interpolate(args, temp_folder):
 
             elif args.image_folder is None:  # Remove if we are about to process a new video
                 shutil.rmtree(temp_folder, ignore_errors=True)
-                os.makedirs(temp_folder)
-                os.makedirs(inp)
+                os.makedirs(temp_folder, exist_ok=True)
+                os.makedirs(inp, exist_ok=True)
 
         else:
             os.makedirs(temp_folder)
@@ -75,7 +80,7 @@ def _extract_and_interpolate(args, temp_folder):
     # Setup conditions depending on video or image input
     if args.input_video is not None:
         if not args.resume:
-            code = os.system(f"ffmpeg -i {args.input_video} -vsync 0 {inp}\\%9d.png")
+            code = os.system(f'ffmpeg -i "{args.input_video}" -an -c:v libwebp -vsync 0 -lossless 1 -compression_level 4 -qscale 75 {inp}\\%9d.webp')
 
             if code:
                 print('Failed to convert video to images.')
@@ -151,13 +156,13 @@ def _extract_and_interpolate(args, temp_folder):
 
 def _create_video(args, temp_folder):
     code = os.system(
-        f"ffmpeg -r {args.fps} -y -i {temp_folder}\\output\\%9d.png -an -c:v libvpx-vp9 -tile-columns 2 -tile-rows 1 -threads 12 -row-mt 1 -static-thresh 0 -frame-parallel 0 -auto-alt-ref 6 -lag-in-frames 25 -g 120 -crf 30 -pix_fmt yuv420p -cpu-used 4 -b:v 20M  -f webm -passlogfile ffmpeg2pass93057 -pass 1 NUL")
+        f'ffmpeg -r {args.fps} -y -i "{temp_folder}\\output\\%9d.webp" -an -c:v libvpx-vp9 -tile-columns 2 -tile-rows 1 -threads 12 -row-mt 1 -static-thresh 0 -frame-parallel 0 -auto-alt-ref 6 -lag-in-frames 25 -g 120 -crf 25 -pix_fmt yuv420p -cpu-used 4 -b:v 25M  -f webm -passlogfile ffmpeg2pass93057 -pass 1 NUL')
     if code:
         print('Failed to convert interpolated images to video, pass 1.')
         sys.exit(code)
 
     code = os.system(
-        f"ffmpeg -r {args.fps} -y -i {temp_folder}\\%9d.png -c:a copy -c:v libvpx-vp9 -tile-columns 2 -tile-rows 1 -threads 12 -row-mt 1 -static-thresh 0 -frame-parallel 0 -auto-alt-ref 6 -lag-in-frames 25 -g 120 -crf 30 -pix_fmt yuv420p -cpu-used 1 -b:v 20M  -f webm -passlogfile ffmpeg2pass93057 -pass 2 {args.output_video}")
+        f'ffmpeg -r {args.fps} -y -i "{temp_folder}\\output\\%9d.webp" -c:a copy -c:v libvpx-vp9 -tile-columns 2 -tile-rows 1 -threads 12 -row-mt 1 -static-thresh 0 -frame-parallel 0 -auto-alt-ref 6 -lag-in-frames 25 -g 120 -crf 25 -pix_fmt yuv420p -cpu-used 1 -b:v 25M  -f webm -passlogfile ffmpeg2pass93057 -pass 2 {args.output_video}')
 
     if code:
         print('Failed to convert interpolated images to video.')

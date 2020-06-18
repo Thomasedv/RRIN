@@ -55,7 +55,7 @@ class Writer(Thread):
         # Restore original dimensions
         w_int, h_int = image.size
         image = image.crop((0, abs(h_int - img_data['height']), img_data['width'], h_int))
-        image.save(dest)
+        image.save(dest, lossless=True, quality=75, method=4)
 
     def run(self) -> None:
         while self.queue or not self.exit_flag:
