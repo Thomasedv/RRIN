@@ -42,7 +42,7 @@ def train(args):
         state = {}
 
     model = model.cuda()
-    model.eval()
+
 
     start_epoch = state.get('epoch', 1)
 

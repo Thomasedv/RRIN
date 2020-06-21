@@ -37,15 +37,14 @@ class Writer(Thread):
     """
     exit_flag = False
 
-    def __init__(self, target_file):
+    def __init__(self, target_file, framerate):
         super(Writer, self).__init__()
         self.queue = deque()
-        self.writer = None
-
+        self.save_count = 0
         # TODO: Make argument
         self.ffmpeg = r'C:\Users\thoma\User PATH\ffmpeg.exe'
 
-        output_params = {"-input_framerate": '60',
+        output_params = {"-input_framerate": str(framerate),
                          '-vcodec': 'libvpx-vp9',
                          '-tile-columns': '2',
                          '-tile-rows': '1',
@@ -63,7 +62,7 @@ class Writer(Thread):
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,
                                 custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
 
-    def add_job(self, method, item, max_queue=500):
+    def add_job(self, method, item, max_queue=750):
         if self.writer is None:
             raise Exception('Writer is not started yet. Call: Writer.start_writer(output)')
         # Hold thread when file IO is too far behind.
@@ -72,36 +71,36 @@ class Writer(Thread):
             sleep(5)
         self.queue.append((method, item))
 
-    def from_file(self, src):
-        # shutil.copy(src, dst)
-        frame = cv2.imread(src, cv2.IMREAD_COLOR)
-        # {do something with the frame here}
-        # write frame to writer
+    def from_file(self, frame):
         self.writer.write(frame)
+        self.save_count += 1
+        # print('  ',self.save_count)
 
     def from_tensor(self, item):
-        image, img_data, dest = item
+        image, (w, h) = item
         image = transforms.functional.to_pil_image(image.cpu().squeeze(0))
 
         # Restore original dimensions
         w_int, h_int = image.size
-        image = image.crop((0, abs(h_int - img_data['height']), img_data['width'], h_int))
+        image = image.crop((0, abs(h_int - h), w, h_int))
 
-        image = cv2.cvtColor(numpy.asarray(image), cv2.COLOR_RGB2BGR)
-        self.writer.write(image)
+        # image = cv2.cvtColor(numpy.asarray(image), cv2.COLOR_BGR2RGB)
+        self.writer.write(numpy.asarray(image))
+        self.save_count += 1
+        # print(' \n\n ', self.save_count, ' \n\n ')
         # image.save(dest., lossless=True, quality=75, method=4)
 
     def run(self) -> None:
         while True:
-            sleep(0.1)
+            sleep(0.05)
             if self.queue:
                 method, item = self.queue.popleft()
                 if method == 'file':
-                    src, dst = item
-                    self.from_file(src)
+                    self.from_file(item)
                 elif method == 'tensor':
                     self.from_tensor(item)
-
+                else:
+                    raise Exception(f'Got unknown job: {method}')
             # Exit when queue empty and no more coming.
             # TODO: Rename to no_more_jobs FLAG
             if self.exit_flag and not self.queue:
