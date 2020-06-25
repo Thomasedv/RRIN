@@ -7,13 +7,12 @@ import torch
 import tqdm
 from torch.utils.data import Dataset
 
-from dataloader import Dataloader, ConvertLoader
+from dataloader import ConvertLoader
 from model import Net
-from utils import Writer, ConvertSampler
+from utils import Writer, ConvertSampler, get_thread_error
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
-
 
 def dummy_collate(x):
     return x
@@ -23,6 +22,7 @@ def convert(args):
     start_time  = time.time()
     _extract_and_interpolate(args)
     print(f'Conversion finished in {time.time() - start_time} seconds!')
+
 
 def _extract_and_interpolate(args):
     # For future reference, this keeps image count on resume
@@ -59,13 +59,17 @@ def _extract_and_interpolate(args):
     model.eval()
     intermediates = args.sf  # sf in superslomo
 
-    writer = Writer(args.output_video, args.fps)
+    writer = Writer(args.output_video, args.fps, source=args.input_video)
     writer.start()
 
     with torch.no_grad():
         img_count = resume_index + resume_index * args.sf - args.sf
         # TQDM starting index possibly off by one.
         for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader):
+
+            # Raise treaded errors to main thread.
+            if get_thread_error() is not None:
+                raise get_thread_error()
 
             # NB: Make sure jobs are added sequentially. Orders matters.
             if img_count == 1:

@@ -1,15 +1,17 @@
-import shutil
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from time import sleep
 
-import cv2
 import numpy
-
 from torch.utils.data.sampler import SequentialSampler
 from torchvision import transforms
 from vidgear.gears import WriteGear
+
+thread_exception = None
+
+
+def get_thread_error():
+    return thread_exception
 
 
 def get_sampler(start_index):
@@ -28,6 +30,16 @@ class ConvertSampler(SequentialSampler):
         return iter(range(self.start_idx, len(self.data_source)))
 
 
+class FakeStr(str):
+    """Since Vidgear only takes a dict for arguments, this allows for multiple map calls -map """
+
+    def __hash__(self):
+        return hash(str(self) + 'Fake')
+
+    def __eq__(self, other):
+        return False
+
+
 class Writer(Thread):
     """
     Class that offloads image crop and save from main thread. GREATLY speeds up conversion.
@@ -37,7 +49,16 @@ class Writer(Thread):
     """
     exit_flag = False
 
-    def __init__(self, target_file, framerate):
+    def __init__(self, target_file, framerate, source=None):
+        """
+
+        :param target_file: Target filename/path
+        :type target_file: str
+        :param framerate: Target framerate
+        :type framerate: str
+        :param source: Input video, used for linking any sound tracks to target
+        :type source: str
+        """
         super(Writer, self).__init__()
         self.queue = deque()
         self.save_count = 0
@@ -45,6 +66,11 @@ class Writer(Thread):
         self.ffmpeg = r'C:\Users\thoma\User PATH\ffmpeg.exe'
 
         output_params = {"-input_framerate": str(framerate),
+                         '-i': source,
+                         FakeStr('-map'): '0:v:0',
+                         '-map': '1:a?',
+                         '-acodec': 'libopus',
+                         '-b:a': '320k',
                          '-vcodec': 'libvpx-vp9',
                          '-tile-columns': '2',
                          '-tile-rows': '1',
@@ -55,14 +81,14 @@ class Writer(Thread):
                          '-auto-alt-ref': '6',
                          '-lag-in-frames': '25',
                          '-g': '120',
-                         '-crf': '30',
+                         '-crf': '25',
                          '-b:v': '40M'
-                         # '-pix_fmt': 'yuv420p'
                          }
+        # TODO: Remove 2-pass params
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,
                                 custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
 
-    def add_job(self, method, item, max_queue=750):
+    def add_job(self, method, item, max_queue=1000):
         if self.writer is None:
             raise Exception('Writer is not started yet. Call: Writer.start_writer(output)')
         # Hold thread when file IO is too far behind.
@@ -91,18 +117,23 @@ class Writer(Thread):
         # image.save(dest., lossless=True, quality=75, method=4)
 
     def run(self) -> None:
-        while True:
-            sleep(0.05)
-            if self.queue:
-                method, item = self.queue.popleft()
-                if method == 'file':
-                    self.from_file(item)
-                elif method == 'tensor':
-                    self.from_tensor(item)
-                else:
-                    raise Exception(f'Got unknown job: {method}')
-            # Exit when queue empty and no more coming.
-            # TODO: Rename to no_more_jobs FLAG
-            if self.exit_flag and not self.queue:
-                break
-        self.writer.close()
+        try:
+            while True:
+                sleep(0.05)
+                if self.queue:
+                    method, item = self.queue.popleft()
+                    if method == 'file':
+                        self.from_file(item)
+                    elif method == 'tensor':
+                        self.from_tensor(item)
+                    else:
+                        raise Exception(f'Got unknown job: {method}')
+                # Exit when queue empty and no more coming.
+                # TODO: Rename to no_more_jobs FLAG
+                if self.exit_flag and not self.queue:
+                    break
+        except Exception as e:
+            global thread_exception
+            thread_exception = e
+        finally:
+            self.writer.close()

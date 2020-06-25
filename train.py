@@ -9,9 +9,10 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from dataloader import Dataloader
+from dataloader import TrainDataloader
 from losses import CombinedLoss, charbonnierLoss
 from model import Net
+
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
@@ -22,8 +23,9 @@ def train(args):
     if use_cuda:
         print('Cuda enabled!')
 
-    train_dataset = Dataloader(path=args.train_folder, cuda=use_cuda, train=True)
-    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=False)
+    train_dataset = TrainDataloader(path=args.train_folder, cuda=use_cuda)
+    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=False,
+                                              num_workers=2)
 
     model = Net()
 
@@ -38,11 +40,10 @@ def train(args):
             print('No checkpoint found with that modelname! Starting fresh!', )
             state = {}
     else:
-        print('Starting new model')
+        print(f'Starting new model: "{args.model_name}"')
         state = {}
 
     model = model.cuda()
-
 
     start_epoch = state.get('epoch', 1)
 
@@ -50,7 +51,7 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [75, 125, 135], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [25, 45, 65], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
@@ -67,7 +68,8 @@ def train(args):
         param.requires_grad = False
     #
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # L1_lossFn = nn.L1Loss().to(device)
+
+    L1_lossFn = nn.L1Loss().to(device)
     MSE_LossFn = nn.MSELoss().to(device)
     ComboLossFn = CombinedLoss().to(device)
 
@@ -91,20 +93,19 @@ def train(args):
             for idx, f0, f_gt, f1 in zip(indexes, I0, It, I1):
                 itrs += 1
 
-                f0 = f0
-                f1 = f1
-                f_gt = f_gt
+                f0 = f0.cuda()
+                f1 = f1.cuda()
+                f_gt = f_gt.cuda()
 
-                f_int = model(f0.cuda(), f1.cuda())
-                #
-                # recnLoss = L1_lossFn(f_int, f_gt)
-                # prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt))
-                # print('ch loss', charbonnierLoss(f_int, f_gt))
-                charLoss = charbonnierLoss(f_int, f_gt)
-                comboLoss = ComboLossFn(f_int, f_gt)
-                loss += comboLoss / 10 + charLoss / 1e3
-                # Samples at 10, 30
-                if idx % 1000 == 0:
+                f_int = model(f0, f1)
+
+                prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 10
+                charLoss = charbonnierLoss(f_int, f_gt) / 1e3
+                comboLoss = ComboLossFn(f_int, f_gt) / 10
+
+                loss += comboLoss + charLoss + prcpLoss
+                # Samples at every 750
+                if idx % 750 == 0:
                     if not os.path.exists(f'debug/{idx}'):
                         os.makedirs(f'debug/{idx}')
 
@@ -112,30 +113,29 @@ def train(args):
                         MSE_val = MSE_LossFn(f_int, f_gt)
                         psnr = (10 * math.log10(1 / MSE_val.item()))
                         print(f'INDEX {idx}: psnr {psnr:2.4f}, '
-                              f'charb {charLoss.item() / 1e3:6.4f}, '
-                              f'combo {comboLoss / 10:6.4f}')
+                              f'charb {charLoss.item():6.4f}, '
+                              f'combo {comboLoss:6.4f}, '
+                              f'prcp {prcpLoss.item()}:6.4f')
 
                         flipped = train_dataset.flip_map[idx.item()]
-
                         if flipped:
-
                             if train_dataset.is_randomcrop(idx.item()):
-                                transforms.functional.to_pil_image(f0.squeeze(0)).transpose(
+                                transforms.functional.to_pil_image(f0.squeeze(0).cpu()).transpose(
                                     [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                                transforms.functional.to_pil_image(f1.squeeze(0)).transpose(
+                                transforms.functional.to_pil_image(f1.squeeze(0).cpu()).transpose(
                                     [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                            transforms.functional.to_pil_image(f_int.squeeze(0)).transpose(
+                            transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).transpose(
                                 [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
                         else:
                             if train_dataset.is_randomcrop(idx.item()):
-                                transforms.functional.to_pil_image(f0.squeeze(0)).save(
+                                transforms.functional.to_pil_image(f0.squeeze(0).cpu()).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                                transforms.functional.to_pil_image(f1.squeeze(0)).save(
+                                transforms.functional.to_pil_image(f1.squeeze(0).cpu()).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                            transforms.functional.to_pil_image(f_int.squeeze(0)).save(
+                            transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
 
             step += 1
@@ -147,10 +147,13 @@ def train(args):
             if step % 50 == 0:
                 MSE_val = MSE_LossFn(f_int, f_gt)
                 psnr = (10 * math.log10(1 / MSE_val.item()))
+
                 print(f'step: {step:5d}, psnr {psnr:7.4f}, (last img: '
-                      f'loss {comboLoss / 10 + charLoss / 1e3:8.4f} '
-                      f'charb {charLoss.item() / 1e3:8.4f}, '
-                      f'combo {comboLoss / 10:8.4f}) {"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
+                      f'loss {comboLoss + charLoss + prcpLoss.item():8.4f} '
+                      f'charb {charLoss.item() :8.4f}, '
+                      f'combo {comboLoss:8.4f}, '
+                      f'prcp {prcpLoss.item():6.4f}), '
+                      f'{"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
 
         sched.step()
 
@@ -159,3 +162,5 @@ def train(args):
                  'optim': optim.state_dict(),
                  'epoch': epoch + 1}
         torch.save(state, 'models' + f"/{args.model_name}{epoch:04d}.pth")
+
+    print('Training finished!')
