@@ -4,16 +4,22 @@ import torch.nn.functional as F
 import numpy as np
 from unet import UNet
 
+gridX, gridY = None, None
+
 
 def warp(img, flow, cuda):
+    global gridX, gridY
     _, _, H, W = img.size()
-    gridX, gridY = np.meshgrid(np.arange(W), np.arange(H))
-    if cuda:
-        gridX = torch.tensor(gridX, requires_grad=False).cuda()
-        gridY = torch.tensor(gridY, requires_grad=False).cuda()
-    else:
-        gridX = torch.tensor(gridX, requires_grad=False)
-        gridY = torch.tensor(gridY, requires_grad=False)
+
+    if gridX is None:
+        gridX, gridY = np.meshgrid(np.arange(W), np.arange(H))
+        if cuda:
+            gridX = torch.tensor(gridX, requires_grad=False).cuda()
+            gridY = torch.tensor(gridY, requires_grad=False).cuda()
+        else:
+            gridX = torch.tensor(gridX, requires_grad=False)
+            gridY = torch.tensor(gridY, requires_grad=False)
+
     u = flow[:, 0, :, :]
     v = flow[:, 1, :, :]
     x = gridX.unsqueeze(0).expand_as(u).float() + u

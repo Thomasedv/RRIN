@@ -66,7 +66,7 @@ def _extract_and_interpolate(args):
     with torch.no_grad():
         img_count = resume_index + resume_index * args.sf - args.sf
         # TQDM starting index possibly off by one.
-        for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader, desc='Converting', unit='frames'):
+        for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader, desc='Converting', unit='frame'):
 
             # Raise treaded errors to main thread.
             if get_thread_error() is not None:
