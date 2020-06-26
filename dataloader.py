@@ -1,5 +1,8 @@
 import os
+from collections import deque
 from random import randint
+from threading import Thread
+from time import sleep
 
 import av
 import cv2
@@ -13,7 +16,6 @@ class TrainDataloader(Dataset):
     def __init__(self, path='input', cuda=False):
         self.path = path
         self.cuda = cuda
-        self.flip_map = {}
 
         self.folder = os.listdir(self.path)
 
@@ -92,7 +94,6 @@ class TrainDataloader(Dataset):
 
         sequence = []
         flip = randint(0, 2)
-        self.flip_map[index] = flip
 
         if self.is_randomcrop(index):
             cropX = randint(0, self.cropX0)
@@ -106,27 +107,36 @@ class TrainDataloader(Dataset):
                                             flip=flip, crop=crop_area)
             sequence.append(img)
 
-        return index, sequence
+        return index, sequence, flip
 
     def __len__(self):
         return len(self.folder) * 2
 
 
-
 class ConvertLoader(Dataset):
+    exit_flag = False
+
     def __init__(self, path, cuda=False):
         self.path = path
         self.cuda = cuda
         # TODO: Implement resume for open_CV
         #  (worst case: Load images from original target, count frames, and determine resume point for interpolation.)
 
+        # Transform to apply
+        self.transform = None
+
         # Cache so we don't load the same image twice. Converting only
         self.last_img = None
+
+        # Used for preloader to know how many images to preload
+        self.current_index = 0
+        self.preloaded_index = 0
+        self.preload_queue = deque(maxlen=6)
 
         if os.path.isdir(path):
             self.mode = 'folder'
             self.len = len(os.listdir(path))
-            self.frame_iter = iter([os.path.join(path, file) for file in os.listdir(path)])
+            self.frame_iter = iter(Image.open(os.path.join(self.path, file)) for file in os.listdir(path))
             self.width = None
             self.height = None
         else:
@@ -139,34 +149,22 @@ class ConvertLoader(Dataset):
 
             self.container = av.open(path)
             self.v_stream = self.container.streams.video[0]
-            self.frame_iter = self.container.decode(self.v_stream)
+            # Iterator that fetches images from ffmpeg
+            self.frame_iter = (i.to_image() for i in self.container.decode(self.v_stream))
 
-        # Get video data
-        # video = cv2.VideoCapture(path)
-        # self.width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH)) # float
-        # self.height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        # self.len = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        # video.release()
-        #
-        # self.pipe = sp.Popen(['ffmpeg', "-i", r'.\videos\testc.webm',
-        #                  "-loglevel", "quiet",  # no text output
-        #                  "-an",  # disable audio
-        #                  "-f", "image2pipe",
-        #                  "-pix_fmt", "bgr24",
-        #                  "-vsync", "0",  # FPS
-        #                  # "-hls_list_size", "3",
-        #                  # "-hls_time", "8"
-        #                  "-vcodec", "rawvideo", "-"],
-        #                 stdin=sp.PIPE, stdout=sp.PIPE)
+        # Max one thread, streaming images from ffmpeg can't do more.
+        # Potentially can be done with loading folder image, but assume it's not needed.
+        self.preload_thread = Thread(target=self._preload)
+        self.preload_thread.start()
 
-    def load_image(self, cuda=False):
-        # self.stream.
-        img = Image.open(next(self.frame_iter))
-        img = Image.merge("RGB", img.split()[::-1])
-        width, height = img.size
-        if self.width is None:
+    def setup_transform(self, img=None):
+        if img is not None:
+            width, height = img.size
             self.width = width
             self.height = height
+        else:
+            width, height = self.width, self.height
+
         if width % 2 ** 4 != 0:
             right_pad = (width // 2 ** 4 + 1) * 2 ** 4 - width
         else:
@@ -178,66 +176,81 @@ class ConvertLoader(Dataset):
             top_pad = 0
 
         transform_list = [transforms.Pad((0, top_pad, 0, right_pad), padding_mode='edge'), transforms.ToTensor()]
+        self.transform = transforms.Compose(transform_list)
 
-        transform = transforms.Compose(transform_list)
+    def process_image(self, img):
+        if self.transform is None:
+            self.setup_transform(img)
 
-        # Image data used to restore dimensions of original images when converting
-        # Remove alpha channel
-        # return transform(img)[:3, :, :].cuda().unsqueeze(0) if cuda else transform(img)[:3, :, :].unsqueeze(0), img_data
+        # Removes Alpha channel
+        return self.transform(img)[:3, :, :].unsqueeze(0)
 
-        if cuda:
-            return transform(img)[:3, :, :].unsqueeze(0).pin_memory(), np.array(img)
-        else:
-            return transform(img)[:3, :, :].unsqueeze(0), np.array(img)
-
-    def stream_image(self, cuda=False):
-        # self.stream.
-        img = next(self.frame_iter).to_image()
+    def stream_image(self):
+        """Loads image either from ffmpeg PIPE or folder."""
+        img = next(self.frame_iter)
         img = Image.merge("RGB", img.split()[::-1])
-        width, height = img.size
 
-        if width % 2 ** 4 != 0:
-            right_pad = (width // 2 ** 4 + 1) * 2 ** 4 - width
+        if self.cuda:
+            return self.process_image(img).pin_memory(), np.array(img)
         else:
-            right_pad = 0
+            return self.process_image(img), np.array(img)
 
-        if height % 2 ** 4 != 0:
-            top_pad = (height // 2 ** 4 + 1) * 2 ** 4 - height
-        else:
-            top_pad = 0
+    def _preload(self):
+        try:
+            preload_num = 3
+            timeout_limit = 5
+            timeout = 0
+            # len(self) + 1 due to we having to preload the 150th image.
+            while self.preloaded_index < len(self) + 1:
+                if self.exit_flag:
+                    return
 
-        transform_list = [transforms.Pad((0, top_pad, 0, right_pad), padding_mode='edge'), transforms.ToTensor()]
+                if self.current_index + preload_num > self.preloaded_index:
+                    # print(f'Preloading idx {self.preloaded_index+1}')
+                    # Preloading image
+                    image, data = self.stream_image()  # if self.mode == 'video' else self.load_image()
 
-        transform = transforms.Compose(transform_list)
+                    self.preload_queue.append((image, data))
+                    self.preloaded_index += 1
+                    timeout = 0
+                else:
+                    # print(f'Waiting for current index to increase {self.current_index + 1}')
+                    sleep(0.1)
+                    timeout_limit += 0.1
+                    if timeout >= timeout_limit:
+                        raise Exception('Preloader timed out!')
+            # print(f'Loaded all images! preload idx {self.preloaded_index}')
+        except Exception as e:
+            global thread_exception
+            thread_exception = e
 
-        # Image data used to restore dimensions of original images when converting
-        # Remove alpha channel
-        # return transform(img)[:3, :, :].cuda().unsqueeze(0) if cuda else transform(img)[:3, :, :].unsqueeze(0), img_data
+    def preload_pop(self):
+        timeout_limit = 10
+        timeout = 0
+        while not self.preload_queue:
+            timeout += 0.5
 
-        if cuda:
-            return transform(img)[:3, :, :].unsqueeze(0).pin_memory(), np.array(img)
-        else:
-            return transform(img)[:3, :, :].unsqueeze(0), np.array(img)
+            # Timeout check and don't timeout on start.
+            if timeout > timeout_limit:
+                if self.current_index != 0:
+                    raise Exception('Timeout when trying to preload images. ')
+                elif timeout_limit * 2 < timeout:
+                    raise Exception('Timeout when trying to preload images. ')
+            sleep(0.5)
+        item = self.preload_queue.popleft()
+        self.current_index += 1
+        return item
 
     def __getitem__(self, index):
         if self.last_img is None:
-            # img1_path = self.folder[index]
-
-            p1, p1_data = self.stream_image(self.cuda) if self.mode == 'video' else self.load_image(self.cuda)
-
+            p1, p1_data = self.preload_pop()
         else:
             last_index, p1, p1_data = self.last_img
             if last_index != index:
                 raise Exception('Error images acquired out of order')
-                # img1_path = self.folder[index]
-                # p1, p1_data = load_image_tensor(os.path.join(self.path, img1_path), self.cuda)
-        # print(index)
-        # img_path2 = self.folder[index + 1]
-        p2, p2_data = self.stream_image(self.cuda) if self.mode == 'video' else self.load_image(self.cuda)
 
+        p2, p2_data = self.preload_pop()
         self.last_img = index+1, p2, p2_data
-        # print('p1 data', p1_data)
-        # print('p2 data', p2_data)
         return p1, p2, p1_data, p2_data
 
     def __len__(self):

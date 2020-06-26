@@ -25,7 +25,10 @@ def main(args):
     except:
         if args.mode == 'convert':
             from utils import Writer
+            from dataloader import ConvertLoader
+            # Stop threads
             Writer.exit_flag = True
+            ConvertLoader.exit_flag = True
         raise
 
 

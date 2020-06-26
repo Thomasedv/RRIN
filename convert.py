@@ -21,7 +21,7 @@ def dummy_collate(x):
 def convert(args):
     start_time  = time.time()
     _extract_and_interpolate(args)
-    print(f'Conversion finished in {time.time() - start_time} seconds!')
+    print(f'Conversion finished in {time.time() - start_time:.2f} seconds!')
 
 
 def _extract_and_interpolate(args):
@@ -65,7 +65,7 @@ def _extract_and_interpolate(args):
     with torch.no_grad():
         img_count = resume_index + resume_index * args.sf - args.sf
         # TQDM starting index possibly off by one.
-        for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader):
+        for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader, desc='Converting', unit='frames'):
 
             # Raise treaded errors to main thread.
             if get_thread_error() is not None:

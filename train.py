@@ -87,10 +87,10 @@ def train(args):
         # Model supports finding more than a single time step between two input frames.
         # Per Super-SloMo paper, training on up to 7 intermediate frames, may increase model accuracy
         # at least in their case.
-        for indexes, (I0, It, I1) in trainloader:
+        for indexes, (I0, It, I1), flipped in trainloader:
             loss = 0
             itrs = 0
-            for idx, f0, f_gt, f1 in zip(indexes, I0, It, I1):
+            for idx, f0, f_gt, f1, flip in zip(indexes, I0, It, I1, flipped):
                 itrs += 1
 
                 f0 = f0.cuda()
@@ -99,7 +99,7 @@ def train(args):
 
                 f_int = model(f0, f1)
 
-                prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 10
+                prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 20
                 charLoss = charbonnierLoss(f_int, f_gt) / 1e3
                 comboLoss = ComboLossFn(f_int, f_gt) / 10
 
@@ -115,19 +115,18 @@ def train(args):
                         print(f'INDEX {idx}: psnr {psnr:2.4f}, '
                               f'charb {charLoss.item():6.4f}, '
                               f'combo {comboLoss:6.4f}, '
-                              f'prcp {prcpLoss.item()}:6.4f')
+                              f'prcp {prcpLoss.item():8.4f}')
 
-                        flipped = train_dataset.flip_map[idx.item()]
-                        if flipped:
+                        if flip:
                             if train_dataset.is_randomcrop(idx.item()):
                                 transforms.functional.to_pil_image(f0.squeeze(0).cpu()).transpose(
-                                    [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
+                                    [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
                                 transforms.functional.to_pil_image(f1.squeeze(0).cpu()).transpose(
-                                    [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
+                                    [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
                             transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).transpose(
-                                [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flipped - 1]).save(
+                                [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1]).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
                         else:
                             if train_dataset.is_randomcrop(idx.item()):
@@ -148,11 +147,12 @@ def train(args):
                 MSE_val = MSE_LossFn(f_int, f_gt)
                 psnr = (10 * math.log10(1 / MSE_val.item()))
 
-                print(f'step: {step:5d}, psnr {psnr:7.4f}, (last img: '
-                      f'loss {comboLoss + charLoss + prcpLoss.item():8.4f} '
-                      f'charb {charLoss.item() :8.4f}, '
-                      f'combo {comboLoss:8.4f}, '
-                      f'prcp {prcpLoss.item():6.4f}), '
+                print(f'step: {step:5d}, psnr {psnr:7.4f}, '
+                      f'(Last Image | '
+                      f'Total Loss: {comboLoss + charLoss + prcpLoss.item():8.4f} | '
+                      f'charb: {charLoss.item() :8.4f}, '
+                      f'combo: {comboLoss:8.4f}, '
+                      f'prcp: {prcpLoss.item():8.4f}), '
                       f'{"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
 
         sched.step()

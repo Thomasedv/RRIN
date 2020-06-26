@@ -1,3 +1,4 @@
+import os
 from collections import deque
 from threading import Thread
 from time import sleep
@@ -37,6 +38,8 @@ class FakeStr(str):
         return hash(str(self) + 'Fake')
 
     def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return str(self) == str(other)
         return False
 
 
@@ -84,6 +87,13 @@ class Writer(Thread):
                          '-crf': '25',
                          '-b:v': '40M'
                          }
+        # Hack, since ffmpeg args need to be ordered (and dicts are per python 3.7+)
+        # It is easier to remove keys, than try to insert them later.
+        if os.path.isdir(source):
+            del output_params['-i']
+            del output_params['-map']
+            del output_params[FakeStr('-map')]
+
         # TODO: Remove 2-pass params
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,
                                 custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
