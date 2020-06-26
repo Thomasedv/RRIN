@@ -130,8 +130,9 @@ class ConvertLoader(Dataset):
 
         # Used for preloader to know how many images to preload
         self.current_index = 0
+        self.preload_limit = 4
         self.preloaded_index = 0
-        self.preload_queue = deque(maxlen=6)
+        self.preload_queue = deque(maxlen=self.preload_limit + 1)
 
         if os.path.isdir(path):
             self.mode = 'folder'
@@ -196,16 +197,21 @@ class ConvertLoader(Dataset):
             return self.process_image(img), np.array(img)
 
     def _preload(self):
+        """
+        Fetches images from input, times out if it does not get new images before the timeout.
+        Timeouts prevent hang in case model stops working and the program doesn't exit on it's own.
+        TODO: Timeout may not be needed here anymore.
+        """
         try:
-            preload_num = 3
-            timeout_limit = 5
+             # Load 3 images ahead of
+            timeout_limit = 5 + (30 * (not self.cuda))  # seconds, extended if on cpu mode.(Can timeout on slow cpu?)
             timeout = 0
             # len(self) + 1 due to we having to preload the 150th image.
             while self.preloaded_index < len(self) + 1:
                 if self.exit_flag:
                     return
 
-                if self.current_index + preload_num > self.preloaded_index:
+                if self.current_index + self.preload_limit > self.preloaded_index:
                     # print(f'Preloading idx {self.preloaded_index+1}')
                     # Preloading image
                     image, data = self.stream_image()  # if self.mode == 'video' else self.load_image()
@@ -221,10 +227,15 @@ class ConvertLoader(Dataset):
                         raise Exception('Preloader timed out!')
             # print(f'Loaded all images! preload idx {self.preloaded_index}')
         except Exception as e:
+            # Stop main thread by sending it exceptions from thread
             global thread_exception
             thread_exception = e
 
     def preload_pop(self):
+        """
+        Fetches images from queue, times out if queue does not get new images before the timeout.
+        Timeouts prevent hang in case something stops working and the program doesn't exit on it's own.
+        """
         timeout_limit = 10
         timeout = 0
         while not self.preload_queue:

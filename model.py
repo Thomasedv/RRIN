@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from unet import UNet
 
+# Store grids in variables, saves time recreating them every call to warp
 gridX, gridY = None, None
 
 
@@ -46,6 +47,7 @@ class Net(nn.Module):
         Flow = self.Flow(x)
 
         Flow_0_1, Flow_1_0 = Flow[:, :2, :, :], Flow[:, 2:4, :, :]
+
         Flow_t_0 = -(1 - t) *  t      * Flow_0_1 + t * t       * Flow_1_0
         Flow_t_1 =  (1 - t) * (1 - t) * Flow_0_1 - t * (1 - t) * Flow_1_0
 

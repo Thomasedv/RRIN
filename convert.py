@@ -64,6 +64,7 @@ def _extract_and_interpolate(args):
     writer.start()
 
     with torch.no_grad():
+        # Deprecated, but may prove useful in the future.
         img_count = resume_index + resume_index * args.sf - args.sf
         # TQDM starting index possibly off by one.
         for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader, desc='Converting', unit='frame'):
