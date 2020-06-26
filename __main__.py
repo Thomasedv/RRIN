@@ -35,12 +35,10 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Video Frame Interpolation via Residue Refinement')
     parser.add_argument('--model_name', type=str, default='Model',
-                        required=True, help='Name of model')
-    parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA')
+                        required=True, help='Name of model, provide BEFORE selecting train or convert mode!')
+    parser.add_argument('--no_cuda', action='store_true', default=False, help='disables CUDA')
 
-    parser.add_argument('--rm', action='store_true', default=False, help='Removed temp folder on proper finish.')
-
-    sub = parser.add_subparsers(help='Performs training of model', dest='mode')
+    sub = parser.add_subparsers(help='Select mode, training or convert. Use ', dest='mode')
     sub.required = True
 
     train_args = sub.add_parser('train', help='Train the model', )
@@ -53,13 +51,14 @@ if __name__ == '__main__':
 
     sub_convert = sub.add_parser('convert', help='Performs interpolation of a video.')
     sub_convert.add_argument('--input_video', type=str,
-                             required=False, help='Path to video to be interpolated.')
+                             required=False, help='Path to video to be interpolated, or a folder of images!')
     sub_convert.add_argument('--output_video', type=str,
-                             required=False, help='Path to new videofile.')
+                             required=False, help='Path to new videofile. Must end with .webm. (Encoded with VP9)')
     sub_convert.add_argument('--sf', type=int,
-                             required=True, help='How many intermediate frames to make.')
+                             required=True, help='How many intermediate frames to make. --sf 1 doubles frames')
     sub_convert.add_argument('--fps', type=str,
-                             required=True, help='FPS of output')
+                             required=True, help='Frames per second of output. '
+                                                 'Eg. from 30fps to 60fps, use --sf 1 --fps 60')
     sub_convert.add_argument('--image_folder', type=str,
                              required=False, help='Instead of taking frames from video, convert frames from a folder')
     sub_convert.add_argument('--resume', action='store_true', default=False,

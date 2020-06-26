@@ -43,7 +43,7 @@ def _extract_and_interpolate(args):
     convert_loader = torch.utils.data.DataLoader(dataset, sampler=ConvertSampler(dataset, resume_index - 1),
                                                  batch_size=1, shuffle=False, pin_memory=False,
                                                  collate_fn=dummy_collate, num_workers=0)
-    model = Net()
+    model = Net(use_cuda=use_cuda)
 
     for i in reversed(os.listdir('models')):
         if i.lower().startswith(args.model_name.lower()):
@@ -55,7 +55,8 @@ def _extract_and_interpolate(args):
     else:
         raise TypeError(f'No model found with the name: {args.model_name}')
 
-    model = model.cuda()
+    if use_cuda:
+        model = model.cuda()
     model.eval()
     intermediates = args.sf  # sf in superslomo
 
@@ -78,7 +79,10 @@ def _extract_and_interpolate(args):
             for i in range(1, intermediates + 1):
                 # time in between frames, eg. for only a single interpolated frame, t=0.5
                 time_step = i / (intermediates + 1)
-                output = model(img1.cuda(), img2.cuda(), t=time_step)
+                if use_cuda:
+                    output = model(img1.cuda(), img2.cuda(), t=time_step)
+                else:
+                    output = model(img1, img2, t=time_step)
 
                 writer.add_job('tensor', (output.cpu(), (dataset.width, dataset.height)))
                 output = None

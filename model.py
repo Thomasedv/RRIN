@@ -5,11 +5,15 @@ import numpy as np
 from unet import UNet
 
 
-def warp(img, flow):
+def warp(img, flow, cuda):
     _, _, H, W = img.size()
     gridX, gridY = np.meshgrid(np.arange(W), np.arange(H))
-    gridX = torch.tensor(gridX, requires_grad=False).cuda()
-    gridY = torch.tensor(gridY, requires_grad=False).cuda()
+    if cuda:
+        gridX = torch.tensor(gridX, requires_grad=False).cuda()
+        gridY = torch.tensor(gridY, requires_grad=False).cuda()
+    else:
+        gridX = torch.tensor(gridX, requires_grad=False)
+        gridY = torch.tensor(gridY, requires_grad=False)
     u = flow[:, 0, :, :]
     v = flow[:, 1, :, :]
     x = gridX.unsqueeze(0).expand_as(u).float() + u
@@ -22,12 +26,13 @@ def warp(img, flow):
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, use_cuda=True):
         super(Net, self).__init__()
         self.Mask = UNet(16, 2, 4)
         self.Flow = UNet(6, 4, 5)
         self.refine_flow = UNet(10, 4, 4)
         self.final = UNet(9, 3, 4)
+        self.use_cuda = use_cuda
 
     def process(self, x0, x1, t):
         x = torch.cat((x0, x1), 1)
@@ -44,8 +49,8 @@ class Net(nn.Module):
         Flow_t_0 = Flow_t_0 + Flow_t[:, :2, :, :]
         Flow_t_1 = Flow_t_1 + Flow_t[:, 2:4, :, :]
 
-        xt1 = warp(x0, Flow_t_0)
-        xt2 = warp(x1, Flow_t_1)
+        xt1 = warp(x0, Flow_t_0, self.use_cuda)
+        xt2 = warp(x1, Flow_t_1, self.use_cuda)
 
         temp = torch.cat((Flow_t_0, Flow_t_1, x, xt1, xt2), 1)
 
