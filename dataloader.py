@@ -146,11 +146,14 @@ class ConvertLoader(Dataset):
             self.width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))  # float
             self.height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.len = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.input_framerate = video.get(cv2.CAP_PROP_FPS)
             video.release()
 
             self.container = av.open(path)
+
             self.v_stream = self.container.streams.video[0]
             # Iterator that fetches images from ffmpeg
+            self.v_stream.thread_type = 'AUTO'
             self.frame_iter = (i.to_image() for i in self.container.decode(self.v_stream))
 
         # Max one thread, streaming images from ffmpeg can't do more.
@@ -189,7 +192,7 @@ class ConvertLoader(Dataset):
     def stream_image(self):
         """Loads image either from ffmpeg PIPE or folder."""
         img = next(self.frame_iter)
-        img = Image.merge("RGB", img.split()[::-1])
+        # img = Image.merge("RGB", img.split()[::-1])
 
         if self.cuda:
             return self.process_image(img).pin_memory(), np.array(img)
@@ -204,7 +207,7 @@ class ConvertLoader(Dataset):
         """
         try:
              # Load 3 images ahead of
-            timeout_limit = 5 + (30 * (not self.cuda))  # seconds, extended if on cpu mode.(Can timeout on slow cpu?)
+            timeout_limit = 20 + (30 * (not self.cuda))  # seconds, extended if on cpu mode.(Can timeout on slow cpu?)
             timeout = 0
             # len(self) + 1 due to we having to preload the 150th image.
             while self.preloaded_index < len(self) + 1:

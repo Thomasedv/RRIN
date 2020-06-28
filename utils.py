@@ -5,7 +5,7 @@ from time import sleep
 
 import numpy
 from torch.utils.data.sampler import SequentialSampler
-from torchvision import transforms
+from torchvision.transforms.functional import to_pil_image as to_PIL
 from vidgear.gears import WriteGear
 
 thread_exception = None
@@ -38,8 +38,8 @@ class FakeStr(str):
         return hash(str(self) + 'Fake')
 
     def __eq__(self, other):
-        if isinstance(other, self.__class__):
-            return str(self) == str(other)
+        # if isinstance(other, self.__class__):
+        #     return str(self) == str(other)
         return False
 
 
@@ -68,11 +68,23 @@ class Writer(Thread):
         # TODO: Make argument
         self.ffmpeg = r'C:\Users\thoma\User PATH\ffmpeg.exe'
 
+        # Hardware encode (Even nicer if you got multiple GPUs)
+        # output_params = {"-input_framerate": str(framerate),
+        #                  # '-hwaccel': 'cuda',
+        #                  # '-hwaccel_device': '0',
+        #                  '-i': source,
+        #                  '-acodec': 'aac',
+        #                  '-b:a': '320k',
+        #                  # '-vf': 'format=nv12,hwupload',
+        #                  # '-vcodec': 'vp9_vaapi',
+        #                  '-vcodec': 'hevc_nvenc',
+        #                  '-preset': 'slow',
+        #                  '-b:v': '40M'
+        #                  }
+
         output_params = {"-input_framerate": str(framerate),
                          '-i': source,
-                         FakeStr('-map'): '0:v:0',
-                         '-map': '1:a?',
-                         '-acodec': 'libopus',
+                         '-acodec': 'libvorbis',
                          '-b:a': '320k',
                          '-vcodec': 'libvpx-vp9',
                          '-tile-columns': '2',
@@ -89,10 +101,11 @@ class Writer(Thread):
                          }
         # Hack, since ffmpeg args need to be ordered (and dicts are per python 3.7+)
         # It is easier to remove keys, than try to insert them later.
-        if os.path.isdir(source):
-            del output_params['-i']
-            del output_params['-map']
-            del output_params[FakeStr('-map')]
+        # if os.path.isdir(source):
+        #     del output_params['-i']
+        #     del output_params['-map']
+        #     del output_params[FakeStr('-map')]
+        print(output_params)
 
         # TODO: Remove 2-pass params
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,
@@ -108,20 +121,25 @@ class Writer(Thread):
         self.queue.append((method, item))
 
     def from_file(self, frame):
-        self.writer.write(frame)
+        # print(frame.shape)
+        self.writer.write(frame, rgb_mode=True)
         self.save_count += 1
         # print('  ',self.save_count)
 
     def from_tensor(self, item):
         image, (w, h) = item
-        image = transforms.functional.to_pil_image(image.cpu().squeeze(0))
+        # print('\n\n')
+        # img = (image.squeeze(0)[:, :h, :w].transpose(0, 1).transpose(1, 2) * 255).int().numpy()
+        # print('\n\n')
+        # print('pre', image.squeeze(0).shape)
+        # print('pre', image.squeeze(0)[:, :h, :w].shape)
+        # print('post', img.shape)
+        # print('post img2', img2.shape)
+        # print(img2 - img)
+        # print('\n\n')
+        # print('\n\n')
 
-        # Restore original dimensions
-        w_int, h_int = image.size
-        image = image.crop((0, abs(h_int - h), w, h_int))
-
-        # image = cv2.cvtColor(numpy.asarray(image), cv2.COLOR_BGR2RGB)
-        self.writer.write(numpy.asarray(image))
+        self.writer.write(numpy.asarray(to_PIL(image.squeeze(0)[:, -h:, :w].cpu())), rgb_mode=True)
         self.save_count += 1
         # print(' \n\n ', self.save_count, ' \n\n ')
         # image.save(dest., lossless=True, quality=75, method=4)

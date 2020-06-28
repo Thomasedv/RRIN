@@ -60,7 +60,9 @@ def _extract_and_interpolate(args):
     model.eval()
     intermediates = args.sf  # sf in superslomo
 
-    writer = Writer(args.output_video, args.fps, source=args.input_video)
+    output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else args.fps
+    print(f'Input Framerate: {dataset.input_framerate}\nOutput Framerate: {output_fps}')
+    writer = Writer(args.output_video, output_fps, source=args.input_video)
     writer.start()
 
     with torch.no_grad():
