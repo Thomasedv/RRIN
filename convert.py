@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 from dataloader import ConvertLoader
 from model import Net
-from utils import Writer, ConvertSampler, get_thread_error
+from utils import Writer, ConvertSampler, get_thread_error, TQDM
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
@@ -78,9 +78,9 @@ def _extract_and_interpolate(args):
         # Deprecated, but may prove useful in the future.
         # img_count = resume_index + resume_index * args.sf - args.sf
         img_count = 1  # resume_index
-
+        frame_iterator = TQDM(convert_loader, desc='Converting', unit='frame')
         # TQDM starting index possibly off by one.
-        for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader, desc='Converting', unit='frame'):
+        for (img1, img2, img1_data, img2_data), *_ in frame_iterator:
 
             # Raise treaded errors to main thread.
             if get_thread_error() is not None:
@@ -102,7 +102,6 @@ def _extract_and_interpolate(args):
                 output = None
 
             writer.add_job('file', img2_data)
-
             img_count += intermediates + 1
 
     writer.exit_flag = True

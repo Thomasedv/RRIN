@@ -119,6 +119,7 @@ class ConvertLoader(Dataset):
     def __init__(self, path, cuda=False):
         self.path = path
         self.cuda = cuda
+
         # TODO: Implement resume for open_CV
         #  (worst case: Load images from original target, count frames, and determine resume point for interpolation.)
 
@@ -152,12 +153,20 @@ class ConvertLoader(Dataset):
             self.container = av.open(path, buffer_size=32768*1000)
 
             self.v_stream = self.container.streams.video[0]
+
+            # Below have been tested, minimal time gain.
             cc = self.v_stream.codec_context
-            self.v_stream.flags |= cc.flags.LOW_DELAY
+
+            # Fast decode, non-significant gain, could possibly break stuff?
+            self.v_stream.flags2 |= cc.flags2.FAST
+            # if 'LOW_DELAY' in flags:
+            #     self.v_stream.flags |= cc.flags.LOW_DELAY
+            #
+
+            self.v_stream.thread_type = 'AUTO'
             # print(bool(cc.flags & cc.flags.LOW_DELAY))
 
             # Iterator that fetches images from ffmpeg
-            self.v_stream.thread_type = 'AUTO'
             self.frame_iter = (i.to_image() for i in self.container.decode(self.v_stream))
 
         # Max one thread, streaming images from ffmpeg can't do more.
@@ -195,6 +204,8 @@ class ConvertLoader(Dataset):
 
     def stream_image(self):
         """Loads image either from ffmpeg PIPE or folder."""
+        # Sometimes framerate missreported. This ensure we end properly in those cases.
+
         img = next(self.frame_iter)
         # img = Image.merge("RGB", img.split()[::-1])
 
@@ -221,7 +232,11 @@ class ConvertLoader(Dataset):
                 if self.current_index + self.preload_limit > self.preloaded_index:
                     # print(f'Preloading idx {self.preloaded_index+1}')
                     # Preloading image
-                    image, data = self.stream_image()  # if self.mode == 'video' else self.load_image()
+                    try:
+                        image, data = self.stream_image()  # if self.mode == 'video' else self.load_image()
+                    except StopIteration:
+                        self.len = self.preloaded_index
+                        return
 
                     self.preload_queue.append((image, data))
                     self.preloaded_index += 1
@@ -247,6 +262,10 @@ class ConvertLoader(Dataset):
         timeout = 0
         while not self.preload_queue:
             timeout += 0.2
+
+            # Less frames than expected, but done with all frames.
+            if self.current_index == self.len:
+                raise StopIteration
 
             # Timeout check and don't timeout on start.
             if timeout > timeout_limit:

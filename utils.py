@@ -1,8 +1,10 @@
 from collections import deque
 from threading import Thread
 from time import sleep
+import multiprocessing
 
 import numpy
+import tqdm
 from torch.utils.data.sampler import SequentialSampler
 from vidgear.gears import WriteGear
 
@@ -26,6 +28,13 @@ class ConvertSampler(SequentialSampler):
 
     def __iter__(self):
         return iter(range(self.start_idx, len(self.data_source)))
+
+
+class TQDM(tqdm.tqdm):
+    def close(self):
+        self.total = len(self.iterable)
+        self.refresh()
+        super(TQDM, self).close()
 
 
 class Writer(Thread):
@@ -68,6 +77,9 @@ class Writer(Thread):
         #                  '-b:v': '40M'
         #                  }
 
+        # Used to set thread count-
+        cpus = multiprocessing.cpu_count()
+
         output_params = {"-input_framerate": str(framerate),
                          '-i': source,
                          '-clones': ['-map', '0:v:0', '-map', '1:a?', '-map', '1:s?'],
@@ -76,18 +88,21 @@ class Writer(Thread):
                          '-vcodec': 'libvpx-vp9',
                          '-tile-columns': '2',
                          '-tile-rows': '1',
-                         '-threads': '12',
+                         # '-threads': f'{max(cpus-2, 1)}',
+                         '-threads': f'{cpus}',
+                         '-cpu-used':'4',
                          '-row-mt': '1',
                          '-static-thresh': '0',
                          '-frame-parallel': '0',
-                         '-auto-alt-ref': '6',
                          '-lag-in-frames': '25',
-                         '-g': '120',
+                         '-g': f'{int(framerate*2)}',
                          '-crf': '25',
                          '-b:v': '40M',
+                         '-r': str(framerate)
                          }
 
         # TODO: Remove 2-pass params
+        # TODO: Test image folder for input. Conversion may fail.
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,
                                 custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
 

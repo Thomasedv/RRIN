@@ -39,10 +39,10 @@ def main():
                                                  'Can also be "2x" to double framerate')
     sub_convert.add_argument('--image_folder', type=str,
                              required=False, help='Instead of taking frames from video, convert frames from a folder')
-    sub_convert.add_argument('--resume', action='store_true', default=False,
-                            help='Resume converting')
 
-    # TODO: Add parameter to redo only part of conversion, eg, do not reinterpolate frames. Only convert frames to video
+    # Deprecated due to video frame piping.
+    # sub_convert.add_argument('--resume', action='store_true', default=False,
+    #                         help='Resume converting')
 
     # parser.add_argument('--samples', action='store_true', default=False, help='Enables samples during testing')
     # parser.add_argument('--test_folder', type=str, required=False, help='path to folder for saving checkpoints')
