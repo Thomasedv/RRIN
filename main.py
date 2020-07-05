@@ -9,30 +9,7 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
 
 
-def main(args):
-    try:
-        if args.mode == 'train':
-            train(args)
-        elif args.mode == 'convert':
-            # if args.output_video is None:
-            #     args.output_video = os.path.splitext(args.input_video)
-
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=UserWarning)
-                convert(args)
-    except:
-        if args.mode == 'convert':
-            from utils import Writer
-            from dataloader import ConvertLoader
-            # Stop threads
-            Writer.exit_flag = True
-            ConvertLoader.exit_flag = True
-        raise
-
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='PyTorch Video Frame Interpolation via Residue Refinement')
     parser.add_argument('--model_name', type=str, default='Model',
                         required=True, help='Name of model, provide BEFORE selecting train or convert mode!')
@@ -71,4 +48,28 @@ if __name__ == '__main__':
     # parser.add_argument('--test_folder', type=str, required=False, help='path to folder for saving checkpoints')
 
     args = parser.parse_args()
-    main(args)
+
+    try:
+        if args.mode == 'train':
+            train(args)
+        elif args.mode == 'convert':
+            # if args.output_video is None:
+            #     args.output_video = os.path.splitext(args.input_video)
+
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=UserWarning)
+                convert(args)
+    except:
+        if args.mode == 'convert':
+            from utils import Writer
+            from dataloader import ConvertLoader
+            # Stop threads
+            Writer.exit_flag = True
+            ConvertLoader.exit_flag = True
+        raise
+
+
+if __name__ == '__main__':
+    main()
