@@ -1,11 +1,9 @@
-import os
 from collections import deque
 from threading import Thread
 from time import sleep
 
 import numpy
 from torch.utils.data.sampler import SequentialSampler
-from torchvision.transforms.functional import to_pil_image as to_PIL
 from vidgear.gears import WriteGear
 
 thread_exception = None
@@ -18,7 +16,6 @@ def get_thread_error():
 def get_sampler(start_index):
     def sampler(data_source):
         return ConvertSampler(data_source, start_index)
-
     return sampler
 
 
@@ -29,18 +26,6 @@ class ConvertSampler(SequentialSampler):
 
     def __iter__(self):
         return iter(range(self.start_idx, len(self.data_source)))
-
-
-class FakeStr(str):
-    """Since Vidgear only takes a dict for arguments, this allows for multiple map calls -map """
-
-    def __hash__(self):
-        return hash(str(self) + 'Fake')
-
-    def __eq__(self, other):
-        # if isinstance(other, self.__class__):
-        #     return str(self) == str(other)
-        return False
 
 
 class Writer(Thread):
@@ -68,11 +53,12 @@ class Writer(Thread):
         # TODO: Make argument
         self.ffmpeg = r'C:\Users\thoma\User PATH\ffmpeg.exe'
 
-        # Hardware encode (Even nicer if you got multiple GPUs)
+        # Hardware encode (Probably even nicer if you got multiple GPUs)
         # output_params = {"-input_framerate": str(framerate),
         #                  # '-hwaccel': 'cuda',
         #                  # '-hwaccel_device': '0',
         #                  '-i': source,
+        #                  '-clones': ['-map', '0:v:0', '-map', '1:a?', '-map', '1:s?'],
         #                  '-acodec': 'aac',
         #                  '-b:a': '320k',
         #                  # '-vf': 'format=nv12,hwupload',
@@ -84,7 +70,8 @@ class Writer(Thread):
 
         output_params = {"-input_framerate": str(framerate),
                          '-i': source,
-                         '-acodec': 'libvorbis',
+                         '-clones': ['-map', '0:v:0', '-map', '1:a?', '-map', '1:s?'],
+                         '-acodec': 'libopus',
                          '-b:a': '320k',
                          '-vcodec': 'libvpx-vp9',
                          '-tile-columns': '2',
@@ -97,27 +84,20 @@ class Writer(Thread):
                          '-lag-in-frames': '25',
                          '-g': '120',
                          '-crf': '25',
-                         '-b:v': '40M'
+                         '-b:v': '40M',
                          }
-        # Hack, since ffmpeg args need to be ordered (and dicts are per python 3.7+)
-        # It is easier to remove keys, than try to insert them later.
-        # if os.path.isdir(source):
-        #     del output_params['-i']
-        #     del output_params['-map']
-        #     del output_params[FakeStr('-map')]
-        print(output_params)
 
         # TODO: Remove 2-pass params
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,
                                 custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
 
     def add_job(self, method, item, max_queue=1000):
-        if self.writer is None:
-            raise Exception('Writer is not started yet. Call: Writer.start_writer(output)')
         # Hold thread when file IO is too far behind.
-        while len(self.queue) > max_queue:
+        if len(self.queue) > max_queue:
             print(' Large queue!')
-            sleep(5)
+            while len(self.queue) > max(max_queue - 100, 50):
+                sleep(5)
+
         self.queue.append((method, item))
 
     def from_file(self, frame):
@@ -128,18 +108,12 @@ class Writer(Thread):
 
     def from_tensor(self, item):
         image, (w, h) = item
-        # print('\n\n')
-        # img = (image.squeeze(0)[:, :h, :w].transpose(0, 1).transpose(1, 2) * 255).int().numpy()
-        # print('\n\n')
-        # print('pre', image.squeeze(0).shape)
-        # print('pre', image.squeeze(0)[:, :h, :w].shape)
-        # print('post', img.shape)
-        # print('post img2', img2.shape)
-        # print(img2 - img)
-        # print('\n\n')
-        # print('\n\n')
 
-        self.writer.write(numpy.asarray(to_PIL(image.squeeze(0)[:, -h:, :w].cpu())), rgb_mode=True)
+        # Manually convert to numpy array image that ffmpeg accepts. No need to go to PIL and then to numpy again
+        image = image.squeeze(0)[:, -h:, :w].mul(255).byte()
+        image = numpy.transpose(image.numpy(), (1, 2, 0))
+
+        self.writer.write(image, rgb_mode=True)
         self.save_count += 1
         # print(' \n\n ', self.save_count, ' \n\n ')
         # image.save(dest., lossless=True, quality=75, method=4)
@@ -147,7 +121,7 @@ class Writer(Thread):
     def run(self) -> None:
         try:
             while True:
-                sleep(0.05)
+                sleep(0.1)
                 if self.queue:
                     method, item = self.queue.popleft()
                     if method == 'file':

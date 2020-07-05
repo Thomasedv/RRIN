@@ -14,6 +14,7 @@ from utils import Writer, ConvertSampler, get_thread_error
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
 
+
 def dummy_collate(x):
     return x
 
@@ -58,16 +59,26 @@ def _extract_and_interpolate(args):
     if use_cuda:
         model = model.cuda()
     model.eval()
-    intermediates = args.sf  # sf in superslomo
 
-    output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else args.fps
-    print(f'Input Framerate: {dataset.input_framerate}\nOutput Framerate: {output_fps}')
+    if args.sf is None:
+        if 'x' in args.fps:
+            intermediates = int(args.fps.replace('x', '')) - 1
+        else:
+            raise Exception('--sf has to be given, unless --fps is given as a multiple of the input, eg. "--fps 2x"')
+    else:
+        intermediates = args.sf
+
+    output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else int(args.fps)
+
+    print(f'Input Framerate: {dataset.input_framerate:.4f}\nOutput Framerate: {output_fps:.4f}')
     writer = Writer(args.output_video, output_fps, source=args.input_video)
     writer.start()
 
     with torch.no_grad():
         # Deprecated, but may prove useful in the future.
-        img_count = resume_index + resume_index * args.sf - args.sf
+        # img_count = resume_index + resume_index * args.sf - args.sf
+        img_count = 1  # resume_index
+
         # TQDM starting index possibly off by one.
         for (img1, img2, img1_data, img2_data), *_ in tqdm.tqdm(convert_loader, desc='Converting', unit='frame'):
 

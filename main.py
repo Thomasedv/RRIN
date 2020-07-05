@@ -55,10 +55,11 @@ if __name__ == '__main__':
     sub_convert.add_argument('--output_video', type=str,
                              required=False, help='Path to new videofile. Must end with .webm. (Encoded with VP9)')
     sub_convert.add_argument('--sf', type=int,
-                             required=True, help='How many intermediate frames to make. --sf 1 doubles frames')
+                             required=False, help='How many intermediate frames to make. --sf 1 doubles frames')
     sub_convert.add_argument('--fps', type=str,
                              required=True, help='Frames per second of output. '
-                                                 'Eg. from 30fps to 60fps, use --sf 1 --fps 60')
+                                                 'Eg. from 30fps to 60fps, use --sf 1 --fps 60. '
+                                                 'Can also be "2x" to double framerate')
     sub_convert.add_argument('--image_folder', type=str,
                              required=False, help='Instead of taking frames from video, convert frames from a folder')
     sub_convert.add_argument('--resume', action='store_true', default=False,

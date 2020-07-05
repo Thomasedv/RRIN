@@ -149,9 +149,13 @@ class ConvertLoader(Dataset):
             self.input_framerate = video.get(cv2.CAP_PROP_FPS)
             video.release()
 
-            self.container = av.open(path)
+            self.container = av.open(path, buffer_size=32768*1000)
 
             self.v_stream = self.container.streams.video[0]
+            cc = self.v_stream.codec_context
+            self.v_stream.flags |= cc.flags.LOW_DELAY
+            # print(bool(cc.flags & cc.flags.LOW_DELAY))
+
             # Iterator that fetches images from ffmpeg
             self.v_stream.thread_type = 'AUTO'
             self.frame_iter = (i.to_image() for i in self.container.decode(self.v_stream))
@@ -179,7 +183,7 @@ class ConvertLoader(Dataset):
         else:
             top_pad = 0
 
-        transform_list = [transforms.Pad((0, top_pad, 0, right_pad), padding_mode='edge'), transforms.ToTensor()]
+        transform_list = [transforms.Pad((0, top_pad, right_pad, 0), padding_mode='edge'), transforms.ToTensor()]
         self.transform = transforms.Compose(transform_list)
 
     def process_image(self, img):
@@ -206,7 +210,7 @@ class ConvertLoader(Dataset):
         TODO: Timeout may not be needed here anymore.
         """
         try:
-             # Load 3 images ahead of
+            #  Load 3 images ahead of
             timeout_limit = 20 + (30 * (not self.cuda))  # seconds, extended if on cpu mode.(Can timeout on slow cpu?)
             timeout = 0
             # len(self) + 1 due to we having to preload the 150th image.
@@ -239,10 +243,10 @@ class ConvertLoader(Dataset):
         Fetches images from queue, times out if queue does not get new images before the timeout.
         Timeouts prevent hang in case something stops working and the program doesn't exit on it's own.
         """
-        timeout_limit = 10
+        timeout_limit = 15
         timeout = 0
         while not self.preload_queue:
-            timeout += 0.5
+            timeout += 0.2
 
             # Timeout check and don't timeout on start.
             if timeout > timeout_limit:
@@ -250,7 +254,7 @@ class ConvertLoader(Dataset):
                     raise Exception('Timeout when trying to preload images. ')
                 elif timeout_limit * 2 < timeout:
                     raise Exception('Timeout when trying to preload images. ')
-            sleep(0.5)
+            sleep(0.2)
         item = self.preload_queue.popleft()
         self.current_index += 1
         return item
