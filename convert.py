@@ -1,10 +1,7 @@
 import os
-import shutil
-import sys
 import time
 
 import torch
-import tqdm
 from torch.utils.data import Dataset
 
 from dataloader import ConvertLoader
@@ -62,7 +59,7 @@ def _extract_and_interpolate(args):
 
     if args.sf is None:
         if 'x' in args.fps:
-            intermediates = int(args.fps.replace('x', '')) - 1
+            intermediates = max(int(args.fps.replace('x', '')) - 1, 1)
         else:
             raise Exception('--sf has to be given, unless --fps is given as a multiple of the input, eg. "--fps 2x"')
     else:
@@ -78,7 +75,19 @@ def _extract_and_interpolate(args):
         # Deprecated, but may prove useful in the future.
         # img_count = resume_index + resume_index * args.sf - args.sf
         img_count = 1  # resume_index
-        frame_iterator = TQDM(convert_loader, desc='Converting', unit='frame')
+
+        # Dataset defaults to 1e9 frames when total length is unknown.
+        # Change these to use infinte tqdm mode.
+        inf_mode = len(dataset) > 1e8
+        if inf_mode:
+            print('Unknown frame count! Progress bar set to inf mode.')
+            total = float('inf')
+            unit = 'frames'
+        else:
+            total = len(dataset)
+            unit = 'frame'
+
+        frame_iterator = TQDM(convert_loader, desc='Converting', unit=unit, total=total)
         # TQDM starting index possibly off by one.
         for (img1, img2, img1_data, img2_data), *_ in frame_iterator:
 

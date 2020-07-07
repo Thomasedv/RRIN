@@ -29,6 +29,7 @@ class TrainDataloader(Dataset):
 
     def random_crop(self, crop_area=None):
         """ Crops image if given, else resizes to self.resize_dims, and pads image"""
+
         def rand_crop(img):
             return img.crop(crop_area)
 
@@ -40,6 +41,7 @@ class TrainDataloader(Dataset):
                 return img.transpose([Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1])
             else:
                 return img
+
         return flip_img
 
     def load_image_tensor(self, img_path, cuda=False, crop=None, flip: int = 0):
@@ -131,8 +133,10 @@ class ConvertLoader(Dataset):
 
         # Used for preloader to know how many images to preload
         self.current_index = 0
-        self.preload_limit = 4
         self.preloaded_index = 0
+
+        # The limit on preloaded images. Take note that gpu memory is pinned for each
+        self.preload_limit = 6  # This can go pretty high, eg. 100 frames
         self.preload_queue = deque(maxlen=self.preload_limit + 1)
 
         if os.path.isdir(path):
@@ -147,10 +151,12 @@ class ConvertLoader(Dataset):
             self.width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))  # float
             self.height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.len = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+            if self.len <= 0:
+                self.len = int(1e9)
             self.input_framerate = video.get(cv2.CAP_PROP_FPS)
             video.release()
 
-            self.container = av.open(path, buffer_size=32768*1000)
+            self.container = av.open(path, buffer_size=32768 * 1000)
 
             self.v_stream = self.container.streams.video[0]
 
@@ -218,19 +224,20 @@ class ConvertLoader(Dataset):
         """
         Fetches images from input, times out if it does not get new images before the timeout.
         Timeouts prevent hang in case model stops working and the program doesn't exit on it's own.
-        TODO: Timeout may not be needed here anymore.
         """
         try:
-            #  Load 3 images ahead of
             timeout_limit = 20 + (30 * (not self.cuda))  # seconds, extended if on cpu mode.(Can timeout on slow cpu?)
             timeout = 0
-            # len(self) + 1 due to we having to preload the 150th image.
-            while self.preloaded_index < len(self) + 1:
+
+            while True:
                 if self.exit_flag:
                     return
 
+                if self.preloaded_index == self.len:
+                    self.len += 1
+
                 if self.current_index + self.preload_limit > self.preloaded_index:
-                    # print(f'Preloading idx {self.preloaded_index+1}')
+
                     # Preloading image
                     try:
                         image, data = self.stream_image()  # if self.mode == 'video' else self.load_image()
@@ -240,6 +247,7 @@ class ConvertLoader(Dataset):
 
                     self.preload_queue.append((image, data))
                     self.preloaded_index += 1
+                    # print('Preload index', self.preloaded_index)
                     timeout = 0
                 else:
                     # print(f'Waiting for current index to increase {self.current_index + 1}')
@@ -287,7 +295,7 @@ class ConvertLoader(Dataset):
                 raise Exception('Error images acquired out of order')
 
         p2, p2_data = self.preload_pop()
-        self.last_img = index+1, p2, p2_data
+        self.last_img = index + 1, p2, p2_data
         return p1, p2, p1_data, p2_data
 
     def __len__(self):
