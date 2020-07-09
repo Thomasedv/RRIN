@@ -2,6 +2,7 @@ import os
 import time
 
 import torch
+from torch import nn
 from torch.utils.data import Dataset
 
 from dataloader import ConvertLoader
@@ -17,7 +18,7 @@ def dummy_collate(x):
 
 
 def convert(args):
-    start_time  = time.time()
+    start_time = time.time()
     _extract_and_interpolate(args)
     print(f'Conversion finished in {time.time() - start_time:.2f} seconds!')
 
@@ -103,11 +104,11 @@ def _extract_and_interpolate(args):
                 # time in between frames, eg. for only a single interpolated frame, t=0.5
                 time_step = i / (intermediates + 1)
                 if use_cuda:
-                    output = model(img1.cuda(), img2.cuda(), t=time_step)
+                    output = model(img1.cuda(non_blocking=True), img2.cuda(non_blocking=True), t=time_step)
                 else:
                     output = model(img1, img2, t=time_step)
 
-                writer.add_job('tensor', (output.cpu(), (dataset.width, dataset.height)))
+                writer.add_job('tensor', (output.detach().cpu(), (dataset.width, dataset.height)))
                 output = None
 
             writer.add_job('file', img2_data)
@@ -116,5 +117,5 @@ def _extract_and_interpolate(args):
     writer.exit_flag = True
     print('Waiting for output processing to end...')
     writer.join()
-    print('File io done!')
+    print('File IO done!')
 

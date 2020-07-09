@@ -25,7 +25,7 @@ def train(args):
 
     train_dataset = TrainDataloader(path=args.train_folder, cuda=use_cuda)
     trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=False,
-                                              num_workers=2)
+                                              num_workers=3)
 
     model = Net()
 
@@ -44,6 +44,7 @@ def train(args):
         state = {}
 
     model = model.cuda()
+    model.train()
 
     start_epoch = state.get('epoch', 1)
 
@@ -51,7 +52,7 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [25, 45, 65], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [15, 25, 35], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
@@ -87,73 +88,65 @@ def train(args):
         # Model supports finding more than a single time step between two input frames.
         # Per Super-SloMo paper, training on up to 7 intermediate frames, may increase model accuracy
         # at least in their case.
-        for indexes, (I0, It, I1), flipped in trainloader:
-            loss = 0
-            itrs = 0
-            for idx, f0, f_gt, f1, flip in zip(indexes, I0, It, I1, flipped):
-                itrs += 1
+        for indexes, (f0, f_gt, f1), flipped in trainloader:
 
-                f0 = f0.cuda()
-                f1 = f1.cuda()
-                f_gt = f_gt.cuda()
+            f0 = f0.cuda(non_blocking=True)
+            f1 = f1.cuda(non_blocking=True)
+            f_gt = f_gt.cuda(non_blocking=True)
 
-                f_int = model(f0, f1)
+            f_int = model(f0, f1)
 
-                prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 20
-                charLoss = charbonnierLoss(f_int, f_gt) / 1e3
-                comboLoss = ComboLossFn(f_int, f_gt) / 10
+            prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 20
+            charLoss = charbonnierLoss(f_int, f_gt) / 1e3
+            comboLoss = ComboLossFn(f_int, f_gt) / 10
 
-                loss += comboLoss + charLoss + prcpLoss
-                # Samples at every 750
+            loss = comboLoss + charLoss + prcpLoss
+
+            for pos, (idx, flip) in enumerate(zip(indexes, flipped)):
                 if idx % 750 == 0:
+                    print(f'IDX: {idx} | Debug image saved!')
                     if not os.path.exists(f'debug/{idx}'):
                         os.makedirs(f'debug/{idx}')
 
                     with torch.no_grad():
-                        MSE_val = MSE_LossFn(f_int, f_gt)
-                        psnr = (10 * math.log10(1 / MSE_val.item()))
-                        print(f'INDEX {idx}: psnr {psnr:2.4f}, '
-                              f'charb {charLoss.item():6.4f}, '
-                              f'combo {comboLoss:6.4f}, '
-                              f'prcp {prcpLoss.item():8.4f}')
-
                         if flip:
                             if train_dataset.is_randomcrop(idx.item()):
-                                transforms.functional.to_pil_image(f0.squeeze(0).cpu()).transpose(
+                                transforms.functional.to_pil_image(f0[pos].detach().cpu()).transpose(
                                     [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                                transforms.functional.to_pil_image(f1.squeeze(0).cpu()).transpose(
+                                transforms.functional.to_pil_image(f1[pos].detach().cpu()).transpose(
                                     [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1]).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                            transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).transpose(
+                            transforms.functional.to_pil_image(f_int[pos].detach().cpu()).transpose(
                                 [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM][flip - 1]).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
                         else:
                             if train_dataset.is_randomcrop(idx.item()):
-                                transforms.functional.to_pil_image(f0.squeeze(0).cpu()).save(
+                                transforms.functional.to_pil_image(f0[pos].detach().cpu()).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_1Pre.png')
-                                transforms.functional.to_pil_image(f1.squeeze(0).cpu()).save(
+                                transforms.functional.to_pil_image(f1[pos].detach().cpu()).save(
                                     f'debug/{idx}/Epoch{epoch:04d}_3Post.png')
-                            transforms.functional.to_pil_image(f_int.squeeze(0).cpu()).save(
+                            transforms.functional.to_pil_image(f_int[pos].detach().cpu()).save(
                                 f'debug/{idx}/Epoch{epoch:04d}_2int.png')
 
             step += 1
             optim.zero_grad()
-            loss = loss / itrs
+            # loss = loss / itrs
             loss.backward()
             optim.step()
 
             if step % 50 == 0:
-                MSE_val = MSE_LossFn(f_int, f_gt)
-                psnr = (10 * math.log10(1 / MSE_val.item()))
+                with torch.no_grad():
+                    MSE_val = MSE_LossFn(f_int, f_gt)
+                    psnr = (10 * math.log10(1 / MSE_val.item()))
 
-                print(f'step: {step:5d}, psnr {psnr:7.4f}, '
-                      f'(Last Image | '
-                      f'Total Loss: {comboLoss + charLoss + prcpLoss.item():8.4f} | '
-                      f'charb: {charLoss.item() :8.4f}, '
-                      f'combo: {comboLoss:8.4f}, '
-                      f'prcp: {prcpLoss.item():8.4f}), '
-                      f'{"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
+                    print(f'step: {step:5d}, psnr {psnr:7.4f}, '
+                          f'(Last Image | '
+                          f'Total Loss: {comboLoss + charLoss + prcpLoss.item():8.4f} | '
+                          f'charb: {charLoss.item() :8.4f}, '
+                          f'combo: {comboLoss:8.4f}, '
+                          f'prcp: {prcpLoss.item():8.4f}), '
+                          f'{"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
 
         sched.step()
 

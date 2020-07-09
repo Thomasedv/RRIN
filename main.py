@@ -53,22 +53,23 @@ def main():
         if args.mode == 'train':
             train(args)
         elif args.mode == 'convert':
-            # if args.output_video is None:
-            #     args.output_video = os.path.splitext(args.input_video)
-
             import warnings
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=UserWarning)
                 convert(args)
-    except:
+    except Exception as e:
         if args.mode == 'convert':
             from utils import Writer
             from dataloader import ConvertLoader
             # Stop threads
             Writer.exit_flag = True
             ConvertLoader.exit_flag = True
-        raise
+        if isinstance(e, KeyboardInterrupt):
+            print('Exiting on interrupt...')
+            return
+        else:
+            raise
 
 
 if __name__ == '__main__':

@@ -11,6 +11,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+local_exception = None
+
 
 class TrainDataloader(Dataset):
     def __init__(self, path='input', cuda=False):
@@ -22,6 +24,13 @@ class TrainDataloader(Dataset):
         # Needs to follow input rules for UNet.
         self.resize_dims = (640, 368)  # Training dimensions
         self.real_dims = (1280, 720)  # Real dimensions
+
+        # Padding
+        self.h_pad = None
+        self.w_pad = None
+
+        # Transform
+        self._transform = {}
 
         # Train data
         self.cropX0 = self.real_dims[0] - self.resize_dims[0]
@@ -42,49 +51,52 @@ class TrainDataloader(Dataset):
             else:
                 return img
 
-        return flip_img
+        if flip:
+            return flip_img
+        else:
+            return lambda img: img
+
+    def get_transform(self, crop, flip):
+        if crop is not None:
+            if flip:
+                return transforms.Compose([self.random_crop(crop), self.random_flip(flip), transforms.ToTensor()])
+            else:
+                return transforms.Compose([self.random_crop(crop), transforms.ToTensor()])
+        else:
+            if flip not in self._transform:
+                tfs = [transforms.Pad((0, self.h_pad, self.w_pad, 0), padding_mode='edge'),
+                       self.random_flip(flip), transforms.ToTensor()]
+                self._transform[flip] = transforms.Compose(tfs)
+            return self._transform[flip]
 
     def load_image_tensor(self, img_path, cuda=False, crop=None, flip: int = 0):
         img = Image.open(img_path)  # type: Image.Image
 
-        # Keep original filetype on output
-        ext = os.path.splitext(img_path)[1]
-
         if crop is None:
             img.thumbnail(self.resize_dims, Image.ANTIALIAS)
-            width, height = img.size
 
-            if width % 2 ** 4 != 0:
-                right_pad = (width // 2 ** 4 + 1) * 2 ** 4 - width
-            else:
-                right_pad = 0
+            if self.h_pad is None:
+                width, height = img.size
 
-            if height % 2 ** 4 != 0:
-                top_pad = (height // 2 ** 4 + 1) * 2 ** 4 - height
-            else:
-                top_pad = 0
+                if width % 2 ** 4 != 0:
+                    right_pad = (width // 2 ** 4 + 1) * 2 ** 4 - width
+                else:
+                    right_pad = 0
 
-            # Resize to train dims, but keep aspect ratio so potential extra pixels missing. Pad missing instead.
-            pre_transform = [transforms.Pad((0, top_pad, 0, right_pad), padding_mode='edge')]
-            img_data = {'width': width,
-                        'height': height,
-                        'filetype': ext,
-                        'path': img_path}
-        else:
-            pre_transform = [self.random_crop(crop)]
-            img_data = {'width': self.resize_dims[0],
-                        'height': self.resize_dims[1],
-                        'filetype': ext,
-                        'path': img_path}
+                if height % 2 ** 4 != 0:
+                    top_pad = (height // 2 ** 4 + 1) * 2 ** 4 - height
+                else:
+                    top_pad = 0
 
-        transform_list = pre_transform + [self.random_flip(flip),
-                                          transforms.ToTensor()]
-        transform = transforms.Compose(transform_list)
+                self.h_pad = top_pad
+                self.w_pad = right_pad
+
+        transform = self.get_transform(crop, flip)
 
         if cuda:
-            return transform(img)[:3, :, :].unsqueeze(0).pin_memory(), img_data
+            return transform(img).narrow(0, 0, 3).pin_memory()
         else:
-            return transform(img)[:3, :, :].unsqueeze(0), img_data
+            return transform(img)[:3, :, :]
 
     def is_randomcrop(self, index):
         return index >= len(self.folder)
@@ -105,8 +117,8 @@ class TrainDataloader(Dataset):
             crop_area = None
 
         for img_path in os.listdir(os.path.join(self.path, subfolder)):
-            img, _ = self.load_image_tensor(os.path.join(self.path, subfolder, img_path), self.cuda,
-                                            flip=flip, crop=crop_area)
+            img = self.load_image_tensor(os.path.join(self.path, subfolder, img_path), self.cuda,
+                                         flip=flip, crop=crop_area)
             sequence.append(img)
 
         return index, sequence, flip
@@ -148,7 +160,7 @@ class ConvertLoader(Dataset):
         else:
             self.mode = 'video'
             video = cv2.VideoCapture(path)
-            self.width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))  # float
+            self.width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.len = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
             if self.len <= 0:
@@ -206,7 +218,7 @@ class ConvertLoader(Dataset):
             self.setup_transform(img)
 
         # Removes Alpha channel
-        return self.transform(img)[:3, :, :].unsqueeze(0)
+        return self.transform(img).narrow(0, 0, 3).unsqueeze(0)
 
     def stream_image(self):
         """Loads image either from ffmpeg PIPE or folder."""
@@ -258,8 +270,8 @@ class ConvertLoader(Dataset):
             # print(f'Loaded all images! preload idx {self.preloaded_index}')
         except Exception as e:
             # Stop main thread by sending it exceptions from thread
-            global thread_exception
-            thread_exception = e
+            global local_exception
+            local_exception = e
 
     def preload_pop(self):
         """
@@ -275,8 +287,12 @@ class ConvertLoader(Dataset):
             if self.current_index == self.len:
                 raise StopIteration
 
+            if local_exception is not None:
+                raise local_exception
+
             # Timeout check and don't timeout on start.
             if timeout > timeout_limit:
+
                 if self.current_index != 0:
                     raise Exception('Timeout when trying to preload images. ')
                 elif timeout_limit * 2 < timeout:
