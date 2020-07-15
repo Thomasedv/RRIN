@@ -86,7 +86,7 @@ def _extract_and_interpolate(args):
             unit = 'frames'
         else:
             total = len(dataset)
-            unit = 'frame'
+            unit = 'frame(s)'
 
         frame_iterator = TQDM(convert_loader, desc='Converting', unit=unit, total=total)
         # TQDM starting index possibly off by one.

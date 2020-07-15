@@ -13,6 +13,8 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch Video Frame Interpolation via Residue Refinement')
     parser.add_argument('--model_name', type=str, default='Model',
                         required=True, help='Name of model, provide BEFORE selecting train or convert mode!')
+    parser.add_argument('--model_type', type=str, default='RRIN',
+                        required=False, help='Name of model, provide BEFORE selecting train or convert mode!')
     parser.add_argument('--no_cuda', action='store_true', default=False, help='disables CUDA')
 
     sub = parser.add_subparsers(help='Select mode, training or convert. Use ', dest='mode')
