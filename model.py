@@ -5,21 +5,27 @@ import numpy as np
 from unet import UNet
 
 # Store grids in variables, saves time recreating them every call to warp
-gridX, gridY = None, None
+grids = {}
 
 
 def warp(img, flow, cuda):
-    global gridX, gridY
+    global grids
     _, _, H, W = img.size()
+    dims = H, W
 
-    if gridX is None:
+    if dims in grids:
+        gridX, gridY = grids[dims]
+    else:
+
         gridX, gridY = np.meshgrid(np.arange(W), np.arange(H))
+
         if cuda:
             gridX = torch.tensor(gridX, requires_grad=False).cuda()
             gridY = torch.tensor(gridY, requires_grad=False).cuda()
         else:
             gridX = torch.tensor(gridX, requires_grad=False)
             gridY = torch.tensor(gridY, requires_grad=False)
+        grids[dims] = gridX, gridY
 
     u = flow[:, 0, :, :]
     v = flow[:, 1, :, :]
