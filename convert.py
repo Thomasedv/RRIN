@@ -44,12 +44,12 @@ def _extract_and_interpolate(args):
                                                  collate_fn=dummy_collate, num_workers=0)
     model = Net(use_cuda=use_cuda)
 
-    for i in reversed(os.listdir('models')):
+    for i in reversed(os.listdir('checkpoints')):
         if i.lower().startswith(args.model_name.lower()):
-            state = torch.load(os.path.join('models', i))
+            state = torch.load(os.path.join('checkpoints', i))
             model.load_state_dict(state['model'], strict=True)
             del state
-            print(f'Using model {os.path.join("models", i)}.')
+            print(f'Using model {os.path.join("checkpoints", i)}.')
             break
     else:
         raise TypeError(f'No model found with the name: {args.model_name}')

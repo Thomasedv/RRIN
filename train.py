@@ -44,10 +44,10 @@ def train(args):
     model.train()
 
     if args.resume:
-        for i in reversed(os.listdir('models')):
+        for i in reversed(os.listdir('checkpoints')):
             if i.lower().startswith(args.model_name.lower()):
-                state = torch.load(os.path.join("models", i))
-                print(f'Using model: {os.path.join("models", i)}')
+                state = torch.load(os.path.join("checkpoints", i))
+                print(f'Using model: {os.path.join("checkpoints", i)}')
                 model.load_state_dict(state['model'], strict=True)
                 break
         else:
@@ -174,6 +174,6 @@ def train(args):
         state = {'model': model.state_dict(),
                  'optim': optim.state_dict(),
                  'epoch': epoch + 1}
-        torch.save(state, 'models' + f"/{args.model_name}{epoch:04d}.pth")
+        torch.save(state, 'checkpoints' + f"/{args.model_name}{epoch:04d}.pth")
 
     print('Training finished!')
