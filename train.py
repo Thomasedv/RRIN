@@ -88,7 +88,7 @@ def train(args):
 
     L1_lossFn = nn.L1Loss().eval().to(device)
     MSE_LossFn = nn.MSELoss().eval().to(device)
-    # ComboLossFn = CombinedLoss().eval().to(device)
+    ComboLossFn = CombinedLoss().eval().to(device)
 
     # Max training epochs
     epochs = 150
@@ -116,16 +116,16 @@ def train(args):
             f_int = model(f0, f1)
 
             # Loss calcs
-            prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 20
+            prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 10
             charLoss = charbonnierLoss(f_int, f_gt) / 1e3
-            # comboLoss = ComboLossFn(f_int, f_gt) / 10
+            comboLoss = ComboLossFn(f_int, f_gt) / 10
 
-            loss = charLoss + prcpLoss
+            loss = charLoss + prcpLoss + comboLoss
 
             # Save some imagse for debug and performance review.
             for pos, (idx, flip) in enumerate(zip(indexes, flipped)):
                 if idx % 750 == 0:
-                    print(f'IDX: {idx} | Debug image saved!')
+                    print(f'IDX: {idx} | Image saved for debugging!')
                     if not os.path.exists(f'debug/{idx}'):
                         os.makedirs(f'debug/{idx}')
 
@@ -164,7 +164,7 @@ def train(args):
                           f'(Last Image | '
                           f'Total Loss: {charLoss + prcpLoss.item():8.4f} | '
                           f'charb: {charLoss.item() :8.4f}, '
-                          # f'combo: {comboLoss:8.4f}, '
+                          f'combo: {comboLoss:8.4f}, '
                           f'prcp: {prcpLoss.item():8.4f}), '
                           f'{"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
 
