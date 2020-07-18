@@ -18,6 +18,23 @@ def get_thread_error():
     return thread_exception
 
 
+def get_model(model_type, use_cuda):
+    if model_type == 'RRIN' or model_type is None:
+        from models.rrin import Net
+        model = Net(use_cuda=use_cuda)
+    elif model_type == 'CAIN':
+        from models.cain import CAIN
+        model = CAIN()
+    elif model_type.lower() == 'softmax_rrin':
+        from models.softmax_rrin import Net
+        if not use_cuda:
+            raise NotImplementedError('This model does not support cuda.')
+        model = Net(use_cuda=use_cuda)
+    else:
+        raise NotImplementedError(f'Unknown model: {model_type}')
+    return model
+
+
 class ConvertSampler(SequentialSampler):
     """
     Creates a sampler that starts from a target index, can be used to resume progress.
@@ -91,7 +108,6 @@ class Writer(Thread):
 
         # Encoding parmeters, including an infile where audio/subs can be added from the original.
         output_params = {"-input_framerate": str(framerate),
-                         '-sn': '-hide_banner',
                          '-i': source,
                          '-clones': ['-map', '0:v:0', '-map', '1:a?', '-map', '1:s?'],
                          '-acodec': 'libopus',
@@ -106,12 +122,16 @@ class Writer(Thread):
                          '-static-thresh': '0',
                          '-frame-parallel': '0',
                          '-lag-in-frames': '25',
-                         '-g': f'{int(framerate * 2)}',
+                         '-g': f'{int(framerate * 2)}',  # Lookahead 2x the framerate
                          '-r': str(framerate),
                          '-crf': '25',
                          '-b:v': '40M',
                          }
 
+        # Easier to remove than try to insert at different positions in dict if the source is not None.
+        if source is None:
+            for key in ['-clones', '-i', '-b:a', '-acodec']:
+                del output_params[key]
         # TODO: Remove 2-pass params
         # TODO: Test image folder for input. Conversion may fail.
         self.writer = WriteGear(output_filename=target_file, compression_mode=True,

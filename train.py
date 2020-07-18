@@ -11,7 +11,7 @@ from torchvision.transforms.functional import to_pil_image
 
 from dataloader import TrainDataloader
 from losses import CombinedLoss, charbonnierLoss
-
+from utils import get_model
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
@@ -32,14 +32,7 @@ def train(args):
     trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=False,
                                               num_workers=6)
 
-    if args.model_type == 'RRIN':
-        from model import Net
-        model = Net(use_cuda=use_cuda)
-    elif args.model_type == 'CAIN':
-        from cain import CAIN
-        model = CAIN()
-    else:
-        raise NotImplementedError('Unknown model')
+    model = get_model(args.model_type, use_cuda)
 
     model.train()
 

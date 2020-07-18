@@ -2,12 +2,11 @@ import os
 import time
 
 import torch
-from torch import nn
 from torch.utils.data import Dataset
 
 from dataloader import ConvertLoader
-from model import Net
-from utils import Writer, ConvertSampler, get_thread_error, TQDM
+from models.rrin import Net
+from utils import Writer, ConvertSampler, get_thread_error, TQDM, get_model
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
@@ -42,7 +41,7 @@ def _extract_and_interpolate(args):
     convert_loader = torch.utils.data.DataLoader(dataset, sampler=ConvertSampler(dataset, resume_index - 1),
                                                  batch_size=1, shuffle=False, pin_memory=False,
                                                  collate_fn=dummy_collate, num_workers=0)
-    model = Net(use_cuda=use_cuda)
+    model = get_model(args.model_type, use_cuda)
 
     for i in reversed(os.listdir('checkpoints')):
         if i.lower().startswith(args.model_name.lower()):
@@ -67,6 +66,10 @@ def _extract_and_interpolate(args):
         intermediates = args.sf
 
     output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else int(args.fps)
+
+    # If the duration is changed, audio/susb are not included.
+    if intermediates-1 != output_fps / dataset.input_framerate:
+        args.input_video = None
 
     print(f'Input Framerate: {dataset.input_framerate:.4f}\nOutput Framerate: {output_fps:.4f}')
     writer = Writer(args.output_video, output_fps, source=args.input_video)
