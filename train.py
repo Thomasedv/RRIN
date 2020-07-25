@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 
 import math
 import torch
@@ -59,14 +60,15 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [15, 25, 35], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [8, 12, 16, 20, 24, 28], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
 
-    # if 'sched' in state:
-    #     sched.load_state_dict(state.get('sched'))
-    #     sched.milestones = Counter([10, 25, 35])
+    # Used to change learning rate milestones
+    if 'sched' in state:
+        sched.load_state_dict(state.get('sched'))
+        sched.milestones = Counter([8, 12, 16, 20, 24, 28])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
 

@@ -1,9 +1,11 @@
+import os
 from collections import deque
 from threading import Thread
 from time import sleep
 import multiprocessing
 
 import numpy
+from PIL import Image
 import tqdm
 from torch.utils.data.sampler import SequentialSampler
 from vidgear.gears import WriteGear
@@ -69,7 +71,7 @@ class Writer(Thread):
     """
     exit_flag = False
 
-    def __init__(self, target_file, framerate, source=None):
+    def __init__(self, target_file, framerate, source=None, images=False):
         """
         :param target_file: Target filename/path
         :type target_file: str
@@ -79,7 +81,13 @@ class Writer(Thread):
         :type source: str
         """
         super(Writer, self).__init__()
-
+        # Image saving
+        self.images = images
+        # Image desat
+        self.target_path = target_file
+        if not os.path.isdir(target_file):
+            os.mkdir(target_file)
+        
         # Internal queue
         self._queue = deque()
         # Images saved, aka frame counter.
@@ -134,8 +142,10 @@ class Writer(Thread):
                 del output_params[key]
         # TODO: Remove 2-pass params
         # TODO: Test image folder for input. Conversion may fail.
-        self.writer = WriteGear(output_filename=target_file, compression_mode=True,
-                                custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
+
+        if not images:
+            self.writer = WriteGear(output_filename=target_file, compression_mode=True,
+                                    custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
 
     def add_job(self, method, item, max_queue=1000):
         # Hold thread when file IO is too far behind.
@@ -148,7 +158,11 @@ class Writer(Thread):
 
     def from_nparray(self, frame):
         """Writes numpy frame to output"""
-        self.writer.write(frame, rgb_mode=True)
+        if self.images:
+            img = Image.fromarray(frame)
+            img.save(f'{self.target_path}\\{self.save_count:08d}.png')
+        else:
+            self.writer.write(frame, rgb_mode=True)
         self.save_count += 1
         # print('  ',self.save_count)
 
@@ -184,4 +198,5 @@ class Writer(Thread):
             global thread_exception
             thread_exception = e
         finally:
-            self.writer.close()
+            if not self.images:
+                self.writer.close()

@@ -62,14 +62,18 @@ def main():
                 convert(args)
     except Exception as e:
         if args.mode == 'convert':
+
+            # Kill all threads/process
             from utils import Writer
             from dataloader import ConvertLoader
             # Stop threads
             Writer.exit_flag = True
             ConvertLoader.exit_flag = True
+
         if isinstance(e, KeyboardInterrupt):
             print('Exiting on interrupt...')
-            return
+            import sys
+            sys.exit(1)
         else:
             raise
 

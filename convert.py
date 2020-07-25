@@ -67,12 +67,12 @@ def _extract_and_interpolate(args):
 
     output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else int(args.fps)
 
-    # If the duration is changed, audio/susb are not included.
-    if intermediates-1 != output_fps / dataset.input_framerate:
+    # If the duration is changed, audio/subs are not included.
+    if intermediates+1 != output_fps / dataset.input_framerate:
         args.input_video = None
 
     print(f'Input Framerate: {dataset.input_framerate:.4f}\nOutput Framerate: {output_fps:.4f}')
-    writer = Writer(args.output_video, output_fps, source=args.input_video)
+    writer = Writer(args.output_video, output_fps, source=args.input_video, images=True)
     writer.start()
 
     with torch.no_grad():
