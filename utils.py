@@ -71,23 +71,24 @@ class Writer(Thread):
     """
     exit_flag = False
 
-    def __init__(self, target_file, framerate, source=None, images=False):
+    def __init__(self, target_path, framerate, source=None):
         """
-        :param target_file: Target filename/path
-        :type target_file: str
+        :param target_path: Target filename/path
+        :type target_path: str
         :param framerate: Target framerate
         :type framerate: str
         :param source: Input video, used for linking any sound tracks to target
         :type source: str
         """
         super(Writer, self).__init__()
-        # Image saving
-        self.images = images
+
         # Image desat
-        self.target_path = target_file
-        if not os.path.isdir(target_file):
-            os.mkdir(target_file)
-        
+        self.target_path = target_path
+
+        _, file = os.path.split(target_path)
+        # Image saving
+        self.images = not '.' in file  # If last part of output has dot, is file else folder. Edgecase when folder with dot
+
         # Internal queue
         self._queue = deque()
         # Images saved, aka frame counter.
@@ -115,7 +116,9 @@ class Writer(Thread):
         cpus = multiprocessing.cpu_count()
 
         # Encoding parmeters, including an infile where audio/subs can be added from the original.
+        # TODO: Handle if source has incompatible audio channels for output (Eg. using something else than webm)
         output_params = {"-input_framerate": str(framerate),
+                         '-disable_force_termination': True,
                          '-i': source,
                          '-clones': ['-map', '0:v:0', '-map', '1:a?', '-map', '1:s?'],
                          '-acodec': 'libopus',
@@ -126,9 +129,6 @@ class Writer(Thread):
                          '-threads': f'{cpus}',
                          '-cpu-used': '3',  # Key required to not prevent frame drops due to realtime assumption
                          '-row-mt': '1',
-                         '-auto-alt-ref': '6',
-                         '-static-thresh': '0',
-                         '-frame-parallel': '0',
                          '-lag-in-frames': '25',
                          '-g': f'{int(framerate * 2)}',  # Lookahead 2x the framerate
                          '-r': str(framerate),
@@ -143,8 +143,13 @@ class Writer(Thread):
         # TODO: Remove 2-pass params
         # TODO: Test image folder for input. Conversion may fail.
 
-        if not images:
-            self.writer = WriteGear(output_filename=target_file, compression_mode=True,
+        if self.images:
+            print(f'Writing images for folder: {self.target_path}')
+            if not os.path.isdir(target_path):
+                os.mkdir(target_path)
+        else:
+            print(f'Creating video: {self.target_path}')
+            self.writer = WriteGear(output_filename=target_path, compression_mode=True,
                                     custom_ffmpeg=self.ffmpeg, logging=False, **output_params)
 
     def add_job(self, method, item, max_queue=1000):

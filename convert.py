@@ -5,7 +5,6 @@ import torch
 from torch.utils.data import Dataset
 
 from dataloader import ConvertLoader
-from models.rrin import Net
 from utils import Writer, ConvertSampler, get_thread_error, TQDM, get_model
 
 torch.backends.cudnn.benchmark = True
@@ -72,7 +71,7 @@ def _extract_and_interpolate(args):
         args.input_video = None
 
     print(f'Input Framerate: {dataset.input_framerate:.4f}\nOutput Framerate: {output_fps:.4f}')
-    writer = Writer(args.output_video, output_fps, source=args.input_video, images=True)
+    writer = Writer(args.output_video, output_fps, source=args.input_video)
     writer.start()
 
     with torch.no_grad():

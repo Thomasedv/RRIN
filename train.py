@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms.functional import to_pil_image
 
 from dataloader import TrainDataloader
-from losses import CombinedLoss, charbonnierLoss
+from losses import CombinedLoss, CharbonnierLoss
 from utils import get_model
 
 torch.backends.cudnn.benchmark = True
@@ -84,6 +84,7 @@ def train(args):
     L1_lossFn = nn.L1Loss().eval().to(device)
     MSE_LossFn = nn.MSELoss().eval().to(device)
     ComboLossFn = CombinedLoss().eval().to(device)
+    char_Loss = CharbonnierLoss().eval().to(device)
 
     # Max training epochs
     epochs = 150
@@ -112,7 +113,7 @@ def train(args):
 
             # Loss calcs
             prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 10
-            charLoss = charbonnierLoss(f_int, f_gt) / 1e3
+            charLoss = char_Loss(f_int, f_gt) / 1e3
             comboLoss = ComboLossFn(f_int, f_gt) / 10
 
             loss = charLoss + prcpLoss + comboLoss

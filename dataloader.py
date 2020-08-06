@@ -272,6 +272,8 @@ class ConvertLoader(Dataset):
             # Stop main thread by sending it exceptions from thread
             global local_exception
             local_exception = e
+        finally:
+            self.container.close()
 
     def preload_pop(self):
         """

@@ -1,9 +1,7 @@
 import argparse
+import sys
 
 import torch
-
-from convert import convert
-from train import train
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.fastest = True
@@ -53,29 +51,34 @@ def main():
 
     try:
         if args.mode == 'train':
+            from train import train
             train(args)
         elif args.mode == 'convert':
-            import warnings
+            from convert import convert
 
+            import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=UserWarning)
                 convert(args)
-    except Exception as e:
+    except (KeyboardInterrupt, Exception) as e:
         if args.mode == 'convert':
-
             # Kill all threads/process
-            from utils import Writer
-            from dataloader import ConvertLoader
-            # Stop threads
-            Writer.exit_flag = True
-            ConvertLoader.exit_flag = True
+            exit_gracefully()
 
         if isinstance(e, KeyboardInterrupt):
-            print('Exiting on interrupt...')
-            import sys
-            sys.exit(1)
+            print('Exiting on interrupt')
+            sys.exit(0)
         else:
             raise
+
+
+def exit_gracefully():
+    from utils import Writer
+    from dataloader import ConvertLoader
+
+    # Stop threads
+    Writer.exit_flag = True
+    ConvertLoader.exit_flag = True
 
 
 if __name__ == '__main__':
