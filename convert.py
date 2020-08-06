@@ -40,6 +40,7 @@ def _extract_and_interpolate(args):
     convert_loader = torch.utils.data.DataLoader(dataset, sampler=ConvertSampler(dataset, resume_index - 1),
                                                  batch_size=1, shuffle=False, pin_memory=False,
                                                  collate_fn=dummy_collate, num_workers=0)
+
     model = get_model(args.model_type, use_cuda)
 
     for i in reversed(os.listdir('checkpoints')):
@@ -55,6 +56,11 @@ def _extract_and_interpolate(args):
     if use_cuda:
         model = model.cuda()
     model.eval()
+
+    if args.chop_forward:
+        if not hasattr(model, ''):
+            print('chop_forward is not supported by this model, disabling it.')
+            args.chop_forward = False
 
     if args.sf is None:
         if 'x' in args.fps:
@@ -106,7 +112,11 @@ def _extract_and_interpolate(args):
                 # time in between frames, eg. for only a single interpolated frame, t=0.5
                 time_step = i / (intermediates + 1)
                 if use_cuda:
-                    output = model(img1.cuda(non_blocking=True), img2.cuda(non_blocking=True), t=time_step)
+                    if args.chop_forward:
+                        output = model.forward_chop(img1.cuda(non_blocking=True), img2.cuda(non_blocking=True),
+                                                    t=time_step)
+                    else:
+                        output = model(img1.cuda(non_blocking=True), img2.cuda(non_blocking=True), t=time_step)
                 else:
                     output = model(img1, img2, t=time_step)
 
@@ -120,4 +130,3 @@ def _extract_and_interpolate(args):
     print('Waiting for output processing to end...')
     writer.join()
     print('File IO done!')
-

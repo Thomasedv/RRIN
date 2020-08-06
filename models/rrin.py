@@ -54,8 +54,8 @@ class Net(nn.Module):
 
         Flow_0_1, Flow_1_0 = Flow[:, :2, :, :], Flow[:, 2:4, :, :]
 
-        Flow_t_0 = -(1 - t) *  t      * Flow_0_1 + t * t       * Flow_1_0
-        Flow_t_1 =  (1 - t) * (1 - t) * Flow_0_1 - t * (1 - t) * Flow_1_0
+        Flow_t_0 = -(1 - t) * t * Flow_0_1 + t * t * Flow_1_0
+        Flow_t_1 = (1 - t) * (1 - t) * Flow_0_1 - t * (1 - t) * Flow_1_0
 
         Flow_t = torch.cat((Flow_t_0, Flow_t_1, x), 1)
         Flow_t = self.refine_flow(Flow_t)
@@ -82,3 +82,75 @@ class Net(nn.Module):
         final = final.clamp(0, 1)
 
         return final
+
+    def forward_chop(self, x0, x1, t=0.5, padding=200, min_size=320_000):
+        """
+        Performs a memory efficient forward where frames are split into smaller patches.
+        Degrades performance and the result of the model, due to information potentially being lost between a patch.
+        High padding values may reduce the output degradation, but adds more work.
+
+        min_size is maximum allowed total pixels of a patch. If less is memory available, reduce this value.
+        min_size has to be at least 160000 with a padding of 200. (Gives roughly 400 x 400 pixel patches)
+
+        For reference, resolutions and their pixel counts.
+        1080p = 2 073 600 pixels
+        720p  =   921 600 pixels
+        720p  = 1 361 600 pixels (200 pixel padding padding)
+        480p  =   307 200 pixels
+        480p  =   571 200 pixles (200 pixel padding padding)
+
+        RRIN can use just under 11 GB with 1080p videos, if you go such a graphics card, then 2M pixels is worth a try.
+        If you are unable to do 1080p videos, reduce min_size til you get good results.
+        """
+
+        b, c, h, w = x0.size()
+
+        h_half, w_half = h // 2, w // 2
+        h_size, w_size = h_half + padding, w_half + padding
+
+        # Adds padding to fit dimensions required by model (UNet specifically)
+        if w_size % 2 ** 4 != 0:
+            w_size = (w_size // 2 ** 4 + 1) * 2 ** 4
+
+        if h_size % 2 ** 4 != 0:
+            h_size = (h_size // 2 ** 4 + 1) * 2 ** 4
+
+        # Prevent padding from going beyond image dims (in this case, chop may not be needed.)
+        # The source input is already padded by dataloader to fid the model
+        h_size, w_size = min(h_size, h), min(w_size, h)
+
+        x0_list = [
+            x0[:, :, 0:h_size, 0:w_size],
+            x0[:, :, 0:h_size, (w - w_size):w],
+            x0[:, :, (h - h_size):h, 0:w_size],
+            x0[:, :, (h - h_size):h, (w - w_size):w]]
+
+        x1_list = [
+            x1[:, :, 0:h_size, 0:w_size],
+            x1[:, :, 0:h_size, (w - w_size):w],
+            x1[:, :, (h - h_size):h, 0:w_size],
+            x1[:, :, (h - h_size):h, (w - w_size):w]]
+
+        # print(w_size, h_size)
+        if w_size * h_size < min_size:
+            sr_list = []
+            for i in range(0, 4):
+                sr_batch = self.forward(x0_list[i], x1_list[i], t=t)
+                sr_list.extend(sr_batch.chunk(1, dim=0))
+        else:
+            sr_list = [
+                self.forward_chop(*patches, t=t, padding=padding, min_size=min_size)
+                for patches in zip(x0_list, x1_list)
+            ]
+
+        output = x1.new(b, c, h, w)
+        output[:, :, 0:h_half, 0:w_half] \
+            = sr_list[0][:, :, 0:h_half, 0:w_half]
+        output[:, :, 0:h_half, w_half:w] \
+            = sr_list[1][:, :, 0:h_half, (w_size - w + w_half):w_size]
+        output[:, :, h_half:h, 0:w_half] \
+            = sr_list[2][:, :, (h_size - h + h_half):h_size, 0:w_half]
+        output[:, :, h_half:h, w_half:w] \
+            = sr_list[3][:, :, (h_size - h + h_half):h_size, (w_size - w + w_half):w_size]
+
+        return output

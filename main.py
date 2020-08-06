@@ -40,6 +40,10 @@ def main():
     sub_convert.add_argument('--image_folder', type=str,
                              required=False, help='Instead of taking frames from video, convert frames from a folder')
 
+    # Instead of this, reducing resolutions is probably smarter for good results
+    sub_convert.add_argument('--chop_forward', type=str,
+                             required=False, help='ONLY USE IF NO OTHER OPTION. Reduces memory use by splitting frames,'
+                                                  ' may yield very bad results as info is lost between the splits.')
     # Deprecated due to video frame piping.
     # sub_convert.add_argument('--resume', action='store_true', default=False,
     #                         help='Resume converting')
