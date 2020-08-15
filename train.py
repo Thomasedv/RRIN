@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms.functional import to_pil_image
 
 from dataloader import TrainDataloader
-from losses import CombinedLoss, CharbonnierLoss
+from models.losses import CharbonnierLoss
 from utils import get_model
 
 torch.backends.cudnn.benchmark = True
@@ -23,6 +23,7 @@ def train(args):
     Performs traning on a dataset arranged into folders of 3 frames, trying to interpolate the second
     image from the first and last.
     """
+
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     if use_cuda:
         print('Cuda enabled!')
@@ -31,7 +32,7 @@ def train(args):
     train_dataset = TrainDataloader(path=args.train_folder, cuda=use_cuda)
     # Images are pinned by dataloader.
     trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=False,
-                                              num_workers=6)
+                                              num_workers=4)
 
     model = get_model(args.model_type, use_cuda)
 
@@ -60,15 +61,15 @@ def train(args):
     for param_group in optim.param_groups:
         param_group['initial_lr'] = 1e-4
 
-    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [8, 12, 16, 20, 24, 28], gamma=0.1, last_epoch=start_epoch)
+    sched = torch.optim.lr_scheduler.MultiStepLR(optim, [1, 20, 26, 40, 44, 46], gamma=0.1, last_epoch=start_epoch)
 
     if 'optim' in state:
         optim.load_state_dict(state.get('optim'))
 
     # Used to change learning rate milestones
-    if 'sched' in state:
-        sched.load_state_dict(state.get('sched'))
-        sched.milestones = Counter([8, 12, 16, 20, 24, 28])
+    # if 'sched' in state:
+    #     sched.load_state_dict(state.get('sched'))
+    #     sched.milestones = Counter([2, 3, 4, 5, 6, 7])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
 
@@ -77,18 +78,21 @@ def train(args):
     vgg16 = torchvision.models.vgg16(pretrained=True)
     vgg16_conv_4_3 = nn.Sequential(*list(vgg16.children())[0][:22])
     vgg16_conv_4_3.eval().to(device)
+    del vgg16
 
     for param in vgg16_conv_4_3.parameters():
         param.requires_grad = False
 
     L1_lossFn = nn.L1Loss().eval().to(device)
     MSE_LossFn = nn.MSELoss().eval().to(device)
-    ComboLossFn = CombinedLoss().eval().to(device)
+    # ComboLossFn = CombinedLoss().eval().to(device)
     char_Loss = CharbonnierLoss().eval().to(device)
+
 
     # Max training epochs
     epochs = 150
 
+    del state
     # Use below to increase learning rate if the stepsize was reduced too early
     # for param_group in optim.param_groups:
     #     param_group['lr'] = 1e-5
@@ -110,13 +114,12 @@ def train(args):
 
             # Perform interpolation
             f_int = model(f0, f1)
-
             # Loss calcs
-            prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 10
+            prcpLoss = L1_lossFn(vgg16_conv_4_3(f_int), vgg16_conv_4_3(f_gt)) * 80
             charLoss = char_Loss(f_int, f_gt) / 1e3
-            comboLoss = ComboLossFn(f_int, f_gt) / 10
+            # comboLoss = ComboLossFn(f_int, f_gt) / 10
 
-            loss = charLoss + prcpLoss + comboLoss
+            loss = charLoss + prcpLoss  # + comboLoss
 
             # Save some imagse for debug and performance review.
             for pos, (idx, flip) in enumerate(zip(indexes, flipped)):
@@ -160,7 +163,7 @@ def train(args):
                           f'(Last Image | '
                           f'Total Loss: {charLoss + prcpLoss.item():8.4f} | '
                           f'charb: {charLoss.item() :8.4f}, '
-                          f'combo: {comboLoss:8.4f}, '
+                          # f'combo: {comboLoss:8.4f}, '
                           f'prcp: {prcpLoss.item():8.4f}), '
                           f'{"CROPPED" * train_dataset.is_randomcrop(idx.item())}')
 

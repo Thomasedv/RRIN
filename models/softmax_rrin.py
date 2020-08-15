@@ -102,7 +102,7 @@ class Net(nn.Module):
         # print(metric)
 
         xt1 = self.softmax(x0, Flow_t_0, metric * self.beta)
-        xt2 = self.softmax(x1, Flow_t_1, metric * self.beta)
+        # xt2 = self.softmax(x1, Flow_t_1, metric * self.beta)
         # cv2.imshow(winname='softmaFt0', mat=xt1[0, :, :, :].cpu().detach().numpy().transpose(1, 2, 0))
         # cv2.imshow(winname='softmaFt1', mat=xt2[0, :, :, :].cpu().detach().numpy().transpose(1, 2, 0))
         # cv2.waitKey(delay=0)

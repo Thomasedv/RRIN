@@ -28,22 +28,25 @@ def main():
 
     sub_convert = sub.add_parser('convert', help='Performs interpolation of a video.')
     sub_convert.add_argument('--input_video', type=str,
-                             required=False, help='Path to video to be interpolated, or a folder of images!')
+                             required=True, help='Path to video to be interpolated, or a folder of images!')
     sub_convert.add_argument('--output_video', type=str,
-                             required=False, help='Path to new videofile. Must end with .webm. (Encoded with VP9)')
+                             required=True, help='Path to new videofile. Must end with .webm. (Encoded with VP9)')
     sub_convert.add_argument('--sf', type=int,
                              required=False, help='How many intermediate frames to make. --sf 1 doubles frames')
     sub_convert.add_argument('--fps', type=str,
                              required=True, help='Frames per second of output. '
                                                  'Eg. from 30fps to 60fps, use --sf 1 --fps 60. '
                                                  'Can also be "2x" to double framerate')
-    sub_convert.add_argument('--image_folder', type=str,
-                             required=False, help='Instead of taking frames from video, convert frames from a folder')
 
     # Instead of this, reducing resolutions is probably smarter for good results
-    sub_convert.add_argument('--chop_forward', type=str,
+    sub_convert.add_argument('--chop_forward', action='store_true',
                              required=False, help='ONLY USE IF NO OTHER OPTION. Reduces memory use by splitting frames,'
                                                   ' may yield very bad results as info is lost between the splits.')
+    sub_convert.add_argument('--patch_size', type=int, default=2e6,
+                             required=False, help='For the "chop_forward" option. Determines the patch size.')
+    sub_convert.add_argument('--padding', type=int, default=200,
+                             required=False, help='For the "chop_forward" option. Determines the patch padding.')
+
     # Deprecated due to video frame piping.
     # sub_convert.add_argument('--resume', action='store_true', default=False,
     #                         help='Resume converting')

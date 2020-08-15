@@ -47,15 +47,25 @@ class Net(nn.Module):
         self.final = UNet(9, 3, 4)
         self.use_cuda = use_cuda
 
-    def process(self, x0, x1, t):
-        x = torch.cat((x0, x1), 1)
+        # Can only reuse flow if forward_chop is disabled
+        self.last_flow = None
 
-        Flow = self.Flow(x)
-
-        Flow_0_1, Flow_1_0 = Flow[:, :2, :, :], Flow[:, 2:4, :, :]
+    def process(self, x0, x1, t, reuse_flow=False):
+        if self.last_flow is not None:
+            Flow_0_1, Flow_1_0, x = self.last_flow
+        else:
+            x = torch.cat((x0, x1), 1)
+            Flow = self.Flow(x)
+            Flow_0_1, Flow_1_0 = Flow[:, :2, :, :], Flow[:, 2:4, :, :]
+            self.last_flow = Flow_0_1, Flow_1_0, x
 
         Flow_t_0 = -(1 - t) * t * Flow_0_1 + t * t * Flow_1_0
         Flow_t_1 = (1 - t) * (1 - t) * Flow_0_1 - t * (1 - t) * Flow_1_0
+
+        # reuse_flow is only true when the next forward call is going to have the same input (but new t)
+        # Ensures no memory is held up needlessly
+        if not reuse_flow:
+            self.last_flow = None
 
         Flow_t = torch.cat((Flow_t_0, Flow_t_1, x), 1)
         Flow_t = self.refine_flow(Flow_t)
@@ -75,15 +85,25 @@ class Net(nn.Module):
 
         return output
 
-    def forward(self, input0, input1, t=0.5):
-        output = self.process(input0, input1, t)
+    def forward(self, x0, x1, t=0.5, chop=False, **kwargs):
+        if self.use_cuda:
+            x0 = x0.cuda(non_blocking=True)
+            x1 = x1.cuda(non_blocking=True)
+
+        if chop:
+            self._forward_chop(x0, x1, t=t, **kwargs)
+        else:
+            self._forward(x0, x1, t=t, **kwargs)
+
+    def _forward(self, input0, input1, t, **kwargs):
+        output = self.process(input0, input1, t, **kwargs)
         compose = torch.cat((input0, input1, output), 1)
         final = self.final(compose) + output
         final = final.clamp(0, 1)
 
         return final
 
-    def forward_chop(self, x0, x1, t=0.5, padding=200, min_size=320_000):
+    def _forward_chop(self, x0, x1, t, padding=200, min_size=1e6):
         """
         Performs a memory efficient forward where frames are split into smaller patches.
         Degrades performance and the result of the model, due to information potentially being lost between a patch.
@@ -104,6 +124,10 @@ class Net(nn.Module):
         """
 
         b, c, h, w = x0.size()
+
+        # If size under min_size, perform as regular.
+        if h * w < min_size:
+            return self.forward(x0, x1, t=t)
 
         h_half, w_half = h // 2, w // 2
         h_size, w_size = h_half + padding, w_half + padding
@@ -135,7 +159,8 @@ class Net(nn.Module):
         if w_size * h_size < min_size:
             sr_list = []
             for i in range(0, 4):
-                sr_batch = self.forward(x0_list[i], x1_list[i], t=t)
+                # Do not give kwargs here as reuse_flow is not used when frames are split.
+                sr_batch = self._forward(x0_list[i], x1_list[i], t=t)
                 sr_list.extend(sr_batch.chunk(1, dim=0))
         else:
             sr_list = [

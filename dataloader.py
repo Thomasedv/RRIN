@@ -21,9 +21,10 @@ class TrainDataloader(Dataset):
 
         self.folder = os.listdir(self.path)
 
-        # Needs to follow input rules for UNet.
-        self.resize_dims = (640, 368)  # Training dimensions
         self.real_dims = (1280, 720)  # Real dimensions
+
+        # Needs to follow input rules for UNet.
+        self.resize_dims = (960, 544)  # Training dimensions
 
         # Padding
         self.h_pad = None
@@ -64,12 +65,12 @@ class TrainDataloader(Dataset):
                 return transforms.Compose([self.random_crop(crop), transforms.ToTensor()])
         else:
             if flip not in self._transform:
-                tfs = [transforms.Pad((0, self.h_pad, self.w_pad, 0), padding_mode='edge'),
-                       self.random_flip(flip), transforms.ToTensor()]
+                tfs = [transforms.Pad((0, self.h_pad, self.w_pad, 0), padding_mode='edge'), self.random_flip(flip),
+                       transforms.ToTensor()]
                 self._transform[flip] = transforms.Compose(tfs)
             return self._transform[flip]
 
-    def load_image_tensor(self, img_path, cuda=False, crop=None, flip: int = 0):
+    def load_image_tensor(self, img_path, crop=None, flip: int = 0):
         img = Image.open(img_path)  # type: Image.Image
 
         if crop is None:
@@ -88,18 +89,23 @@ class TrainDataloader(Dataset):
                 else:
                     top_pad = 0
 
+                # print(top_pad, right_pad)
                 self.h_pad = top_pad
                 self.w_pad = right_pad
 
         transform = self.get_transform(crop, flip)
 
-        if cuda:
-            return transform(img).narrow(0, 0, 3).pin_memory()
-        else:
-            return transform(img)[:3, :, :]
+        tensor_img = transform(img).narrow(0, 0, 3)
+
+        if self.cuda:
+            tensor_img = tensor_img.pin_memory()
+
+        return tensor_img
+
 
     def is_randomcrop(self, index):
         return index >= len(self.folder)
+
 
     def __getitem__(self, index):
         # Does dataset with resized images, and then again with a random crop
@@ -117,7 +123,7 @@ class TrainDataloader(Dataset):
             crop_area = None
 
         for img_path in os.listdir(os.path.join(self.path, subfolder)):
-            img = self.load_image_tensor(os.path.join(self.path, subfolder, img_path), self.cuda,
+            img = self.load_image_tensor(os.path.join(self.path, subfolder, img_path),
                                          flip=flip, crop=crop_area)
             sequence.append(img)
 

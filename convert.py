@@ -58,9 +58,10 @@ def _extract_and_interpolate(args):
     model.eval()
 
     if args.chop_forward:
-        if not hasattr(model, ''):
+        if not hasattr(model, 'forward_chop'):
             print('chop_forward is not supported by this model, disabling it.')
             args.chop_forward = False
+        print('Using chop_forward')
 
     if args.sf is None:
         if 'x' in args.fps:
@@ -73,7 +74,7 @@ def _extract_and_interpolate(args):
     output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else int(args.fps)
 
     # If the duration is changed, audio/subs are not included.
-    if intermediates+1 != output_fps / dataset.input_framerate:
+    if intermediates + 1 != output_fps / dataset.input_framerate:
         args.input_video = None
 
     print(f'Input Framerate: {dataset.input_framerate:.4f}\nOutput Framerate: {output_fps:.4f}')
@@ -111,14 +112,15 @@ def _extract_and_interpolate(args):
             for i in range(1, intermediates + 1):
                 # time in between frames, eg. for only a single interpolated frame, t=0.5
                 time_step = i / (intermediates + 1)
-                if use_cuda:
-                    if args.chop_forward:
-                        output = model.forward_chop(img1.cuda(non_blocking=True), img2.cuda(non_blocking=True),
-                                                    t=time_step)
-                    else:
-                        output = model(img1.cuda(non_blocking=True), img2.cuda(non_blocking=True), t=time_step)
-                else:
-                    output = model(img1, img2, t=time_step)
+
+                output = model(img1,
+                               img2.cuda(non_blocking=True),
+                               t=time_step,
+                               chop=args.chop_forward,
+                               reuse_flow=(i < intermediates),
+                               min_size=args.patch_size,
+                               padding=args.padding
+                               )
 
                 writer.add_job('tensor', (output.detach().cpu(), (dataset.width, dataset.height)))
                 output = None

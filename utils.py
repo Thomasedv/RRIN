@@ -78,16 +78,18 @@ class Writer(Thread):
         :param framerate: Target framerate
         :type framerate: str
         :param source: Input video, used for linking any sound tracks to target
-        :type source: str
+        :type source: str, None
         """
         super(Writer, self).__init__()
 
-        # Image desat
+        # Image destination
         self.target_path = target_path
 
         _, file = os.path.split(target_path)
+
         # Image saving
-        self.images = not '.' in file  # If last part of output has dot, is file else folder. Edgecase when folder with dot
+        # If last part of output has dot, is file else folder. Edgecase when folder with dot
+        self.images = not '.' in file
 
         # Internal queue
         self._queue = deque()
