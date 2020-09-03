@@ -106,7 +106,7 @@ def train(args):
         # Per Super-SloMo paper, training on up to 7 intermediate frames, may increase model accuracy,
         # at least in their case.
         for indexes, (f0, f_gt, f1), flipped in trainloader:
-
+            print(f0.shape)
             if use_cuda:
                 f0 = f0.cuda(non_blocking=True)
                 f1 = f1.cuda(non_blocking=True)

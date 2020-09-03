@@ -91,12 +91,12 @@ class Net(nn.Module):
             x1 = x1.cuda(non_blocking=True)
 
         if chop:
-            self._forward_chop(x0, x1, t=t, **kwargs)
+            return self._forward_chop(x0, x1, t=t, **kwargs)
         else:
-            self._forward(x0, x1, t=t, **kwargs)
+            return self._forward(x0, x1, t=t, **kwargs)
 
     def _forward(self, input0, input1, t, **kwargs):
-        output = self.process(input0, input1, t, **kwargs)
+        output = self.process(input0, input1, t, reuse_flow=kwargs.get('reuse_flow', False))
         compose = torch.cat((input0, input1, output), 1)
         final = self.final(compose) + output
         final = final.clamp(0, 1)
@@ -140,7 +140,7 @@ class Net(nn.Module):
             h_size = (h_size // 2 ** 4 + 1) * 2 ** 4
 
         # Prevent padding from going beyond image dims (in this case, chop may not be needed.)
-        # The source input is already padded by dataloader to fid the model
+        # The source input is already padded by dataloader to fit the model
         h_size, w_size = min(h_size, h), min(w_size, h)
 
         x0_list = [

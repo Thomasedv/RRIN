@@ -26,6 +26,7 @@ class UNet(nn.Module):
                 UNetConvBlock(prev_channels, 2 ** (wf + i), padding)
             )
             prev_channels = 2 ** (wf + i)
+
         self.midconv = nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1)
 
         self.up_path = nn.ModuleList()
@@ -44,7 +45,9 @@ class UNet(nn.Module):
             if i != len(self.down_path) - 1:
                 blocks.append(x)
                 x = F.avg_pool2d(x, 2)
+
         x = F.leaky_relu(self.midconv(x), negative_slope=0.1)
+
         for i, up in enumerate(self.up_path):
             x = up(x, blocks[-i - 1])
 
@@ -72,9 +75,9 @@ class UNetConvBlock(nn.Module):
 class UNetUpBlock(nn.Module):
     def __init__(self, in_size, out_size, padding):
         super(UNetUpBlock, self).__init__()
-
+        # TODO: Try to make UpBlock use nn.ConvTranspose2d instead of Upsample
         self.up = nn.Sequential(
-            nn.Upsample(mode='bilinear', scale_factor=2),
+            nn.Upsample(mode='bilinear', scale_factor=2, align_corners=True),
             nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
         )
         self.conv_block = UNetConvBlock(in_size, out_size, padding)

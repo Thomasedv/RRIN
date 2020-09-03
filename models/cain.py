@@ -47,7 +47,8 @@ class CAIN(nn.Module):
         self.encoder = Encoder(in_channels=3, depth=depth)
         self.decoder = Decoder(depth=depth)
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2, **kwargs):
+        # Clone because input is changed
         x1, m1 = sub_mean(x1.clone())
         x2, m2 = sub_mean(x2.clone())
 

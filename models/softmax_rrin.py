@@ -58,7 +58,7 @@ def warp(img, flow, cuda):
     normx = 2 * (x / W - 0.5)
     normy = 2 * (y / H - 0.5)
     grid = torch.stack((normx, normy), dim=3)
-    warped = F.grid_sample(img, grid)
+    warped = F.grid_sample(img, grid, align_corners=True)
     return warped
 
 
@@ -119,7 +119,11 @@ class Net(nn.Module):
 
         return output
 
-    def forward(self, input0, input1, t=0.5):
+    def forward(self, input0, input1, t=0.5, **kwargs):
+        if self.use_cuda:
+            input0 = input0.cuda(non_blocking=True)
+            input1 = input1.cuda(non_blocking=True)
+
         output = self.process(input0, input1, t)
         compose = torch.cat((input0, input1, output), 1)
         final = self.final(compose) + output

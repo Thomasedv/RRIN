@@ -8,6 +8,7 @@ import numpy
 from PIL import Image
 import tqdm
 from torch.utils.data.sampler import SequentialSampler
+
 from vidgear.gears import WriteGear
 
 # Holds a exception that happened in a thread.
@@ -27,7 +28,7 @@ def get_model(model_type, use_cuda):
     elif model_type == 'CAIN':
         from models.cain import CAIN
         model = CAIN()
-    elif model_type.lower() == 'softmax_rrin':
+    elif model_type.lower() in ('softmax_rrin', 'srrin'):
         from models.softmax_rrin import Net
         if not use_cuda:
             raise NotImplementedError('This model does not support cuda.')
