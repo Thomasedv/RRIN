@@ -163,6 +163,11 @@ class ConvertLoader(Dataset):
             self.frame_iter = iter(Image.open(os.path.join(self.path, file)) for file in os.listdir(path))
             self.width = None
             self.height = None
+
+            # Not used in this mode.
+            self.input_framerate = None
+            self.container = None
+
         else:
             self.mode = 'video'
             video = cv2.VideoCapture(path)
@@ -279,7 +284,8 @@ class ConvertLoader(Dataset):
             global local_exception
             local_exception = e
         finally:
-            self.container.close()
+            if self.container is not None:
+                self.container.close()
 
     def preload_pop(self):
         """

@@ -64,20 +64,26 @@ def _extract_and_interpolate(args):
         print('Using chop_forward')
 
     if args.sf is None:
-        if 'x' in args.fps:
+        if 'x' in args.fps and dataset.mode == 'video':
             intermediates = max(int(args.fps.replace('x', '')) - 1, 1)
         else:
-            raise Exception('--sf has to be given, unless --fps is given as a multiple of the input, eg. "--fps 2x"')
+            raise Exception('--sf has to be given in folder mode and a target fps.'
+                            'In video mode --fps can be given as a multiple of the input, eg. "--fps 2x" '
+                            'in which case, --sf can be dropped.')
     else:
+        if 'x' in args.fps and dataset.mode == 'folder':
+            raise Exception('In folder mode, --fps can not be a multiple like 2x, it needs to be the target fps.')
         intermediates = args.sf
 
     output_fps = dataset.input_framerate * int(args.fps.replace('x', '')) if 'x' in args.fps else int(args.fps)
 
     # If the duration is changed, audio/subs are not included.
-    if intermediates + 1 != output_fps / dataset.input_framerate:
-        args.input_video = None
+    if dataset.input_framerate is not None:
+        if intermediates + 1 != output_fps / dataset.input_framerate:
+            args.input_video = None
 
-    print(f'Input Framerate: {dataset.input_framerate:.4f}\nOutput Framerate: {output_fps:.4f}')
+    input_fps = f'{dataset.input_framerate :.4f}' if dataset.input_framerate is not None else '---'
+    print(f'Input Framerate: {input_fps}\nOutput Framerate: {output_fps:.4f}')
     writer = Writer(args.output_video, output_fps, source=args.input_video)
     writer.start()
 

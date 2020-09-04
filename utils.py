@@ -22,7 +22,7 @@ def get_thread_error():
 
 
 def get_model(model_type, use_cuda):
-    if model_type == 'RRIN' or model_type is None:
+    if model_type is None or model_type == 'RRIN':
         from models.rrin import Net
         model = Net(use_cuda=use_cuda)
     elif model_type == 'CAIN':
