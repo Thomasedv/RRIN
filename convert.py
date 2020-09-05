@@ -36,14 +36,21 @@ def _extract_and_interpolate(args):
     if use_cuda:
         print('Cuda enabled!')
 
-    dataset = ConvertLoader(path=args.input_video, cuda=use_cuda)
+    model = get_model(args.model_type, use_cuda)
+    if args.model_type == 'BMBC':
+        div = 5
+    else:
+        div = 4
+
+    dataset = ConvertLoader(path=args.input_video, cuda=use_cuda, divisor=div)
+
     convert_loader = torch.utils.data.DataLoader(dataset, sampler=ConvertSampler(dataset, resume_index - 1),
                                                  batch_size=1, shuffle=False, pin_memory=False,
                                                  collate_fn=dummy_collate, num_workers=0)
 
-    model = get_model(args.model_type, use_cuda)
-
     for i in reversed(os.listdir('checkpoints')):
+        if args.model_name == 'skip':
+            break
         if i.lower().startswith(args.model_name.lower()):
             state = torch.load(os.path.join('checkpoints', i))
             model.load_state_dict(state['model'], strict=True)
@@ -84,7 +91,8 @@ def _extract_and_interpolate(args):
 
     input_fps = f'{dataset.input_framerate :.4f}' if dataset.input_framerate is not None else '---'
     print(f'Input Framerate: {input_fps}\nOutput Framerate: {output_fps:.4f}')
-    writer = Writer(args.output_video, output_fps, source=args.input_video)
+
+    writer = Writer(args.output_video, output_fps, source=args.input_video if dataset.mode == 'video' else None)
     writer.start()
 
     with torch.no_grad():
@@ -119,7 +127,7 @@ def _extract_and_interpolate(args):
                 # time in between frames, eg. for only a single interpolated frame, t=0.5
                 time_step = i / (intermediates + 1)
 
-                output = model(img1,
+                output = model(img1.cuda(non_blocking=True),
                                img2.cuda(non_blocking=True),
                                t=time_step,
                                chop=args.chop_forward,

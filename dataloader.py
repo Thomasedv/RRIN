@@ -136,7 +136,7 @@ class TrainDataloader(Dataset):
 class ConvertLoader(Dataset):
     exit_flag = False
 
-    def __init__(self, path, cuda=False):
+    def __init__(self, path, cuda=False, divisor=4):
         self.path = path
         self.cuda = cuda
 
@@ -145,6 +145,9 @@ class ConvertLoader(Dataset):
 
         # Transform to apply
         self.transform = None
+
+        # Required level of divisiblity for network
+        self.divisor = divisor
 
         # Cache so we don't load the same image twice. Converting only
         self.last_img = None
@@ -211,13 +214,13 @@ class ConvertLoader(Dataset):
         else:
             width, height = self.width, self.height
 
-        if width % 2 ** 4 != 0:
-            right_pad = (width // 2 ** 4 + 1) * 2 ** 4 - width
+        if width % 2 ** self.divisor != 0:
+            right_pad = (width // 2 ** self.divisor + 1) * 2 ** self.divisor - width
         else:
             right_pad = 0
 
-        if height % 2 ** 4 != 0:
-            top_pad = (height // 2 ** 4 + 1) * 2 ** 4 - height
+        if height % 2 ** self.divisor != 0:
+            top_pad = (height // 2 ** self.divisor + 1) * 2 ** self.divisor - height
         else:
             top_pad = 0
 

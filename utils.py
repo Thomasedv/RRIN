@@ -1,3 +1,4 @@
+import importlib
 import os
 from collections import deque
 from threading import Thread
@@ -28,6 +29,9 @@ def get_model(model_type, use_cuda):
     elif model_type == 'CAIN':
         from models.cain import CAIN
         model = CAIN()
+    elif model_type == 'BMBC':
+        from models.BMBC.run import Net
+        model = Net()
     elif model_type.lower() in ('softmax_rrin', 'srrin'):
         from models.softmax_rrin import Net
         if not use_cuda:
@@ -130,9 +134,9 @@ class Writer(Thread):
                          '-tile-columns': '2',
                          '-tile-rows': '1',
                          '-threads': f'{cpus}',
-                         '-cpu-used': '3',  # Key required to not prevent frame drops due to realtime assumption
+                         '-cpu-used': '0',  # Key required to not prevent frame drops due to realtime assumption
                          '-row-mt': '1',
-                         '-lag-in-frames': '25',
+                         # '-lag-in-frames': '25',
                          '-g': f'{int(framerate * 2)}',  # Lookahead 2x the framerate
                          '-r': str(framerate),
                          '-crf': '25',
@@ -147,7 +151,7 @@ class Writer(Thread):
         # TODO: Test image folder for input. Conversion may fail.
 
         if self.images:
-            print(f'Writing images for folder: {self.target_path}')
+            print(f'Writing images to folder: {self.target_path}')
             if not os.path.isdir(target_path):
                 os.mkdir(target_path)
         else:
