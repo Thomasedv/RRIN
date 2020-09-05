@@ -37,7 +37,7 @@ Example:
     
 
 
-### Testing / Converting
+#### Testing / Converting
 It can use RRIN, BMBC, SRRIN, RAFT_RRIN, and CAIN (untested for a long time, might need a fix or two.)
 The model can both output images to a folder, and output to a video (in this case .webm), and support both a folder of images as input and a video, increasing both speed and storage savings as the need to split a video to images and then back is avoided. Sadly, no batching is implemented in the conversion process, so it's still somewhat slow. However, the default RRIN model is acceptably fast for shorter clips. RRIN also supports forward_chopping, which means it can split images into smaller sections to reduce memory requirement, basically a must on 4K videos. However, the performance is worse on large clips either way.
 
